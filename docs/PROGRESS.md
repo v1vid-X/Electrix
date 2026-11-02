@@ -61,6 +61,17 @@ Last updated: 2026-11-02 — end of the first build (addendum first steps 1–6)
 - "What's happening?" panel writes the same arithmetic the lessons teach, from the solved
   values — verified output: *"So the current is (5 V − 1.89 V) ÷ 220 Ω = 14.1 mA."*
 
+### Desktop app
+- Electron wrapper (`electron/main.cjs`) around the same static build, with the renderer
+  locked down (no Node integration, context isolation on, sandbox on) and external links
+  pushed out to the real browser.
+- `.github/workflows/windows-app.yml` builds the Windows installer on a `windows-latest`
+  runner — a Linux container cannot produce a Windows binary — runs the tests first, and
+  uploads `CircuitBrain-Setup-x.y.z.exe` as a run artifact, or attaches it to a Release on a
+  `v*` tag.
+- Verified by launching the real Electron app under Xvfb: home, lesson (33 KaTeX nodes, both
+  widgets) and the Lab (3D canvas, lazy chunk) all render off disk.
+
 ### Tests — 112 passing
 `npm test`. Covers: Ohm's law and the power law, series/parallel, voltage dividers, LED
 resistor sizing, RC time constants, battery life, engineering-notation formatting, SM-2
@@ -137,6 +148,17 @@ Roughly in the order the addendum asks for.
 ---
 
 ## Known issues
+
+- **The installer is not code-signed**, so Windows SmartScreen warns on first run
+  ("More info" → "Run anyway"). Signing needs a paid certificate.
+- **Lessons are compiled into the build**, so editing `curriculum/` means re-running the dev
+  server or rebuilding — the installed app cannot pick up edited markdown. If that becomes
+  annoying, the fix is to read lessons from disk at runtime in the Electron build.
+- **No Content-Security-Policy** on the renderer, so Electron logs a security warning in
+  development. A strict CSP interacts badly with `file://` loading; the renderer is sandboxed,
+  has no Node access, and loads nothing remote except Google Fonts.
+- **The Windows packaging step itself is only verified in CI**, not locally — this container
+  is Linux.
 
 - **No linter.** `npm run check` is `tsc --noEmit`, which catches type errors but not style.
   ESLint with typescript-eslint would add about 15 dependencies; worth adding if the codebase

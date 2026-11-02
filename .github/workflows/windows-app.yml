@@ -1,0 +1,44 @@
+# Builds the Windows installer. It has to run on a real Windows machine, so GitHub does it.
+# Download the result from the run's "Artifacts" section, or from the Release on a tag.
+name: Windows app
+
+on:
+  push:
+    branches: [main, circuit-brain-foundation]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Never ship an installer built from code that does not pass its own tests.
+      - run: npm test
+
+      # app:pack runs the typecheck, builds the web app into dist/, then packages it.
+      - name: Build the installer
+        run: npm run app:pack
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CircuitBrain-Windows-Setup
+          path: release/*.exe
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: gh release create "${{ github.ref_name }}" release/*.exe --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
