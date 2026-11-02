@@ -39,6 +39,8 @@ export interface Analysis {
   diagnostics: Diagnostic[];
   /** Lines for the "What's happening?" panel. */
   story: string[];
+  /** Voltage at a breadboard hole, relative to ground. null when the circuit did not solve. */
+  voltageAtHole: (hole: string) => number | null;
   solution?: DcSolution;
 }
 
@@ -49,7 +51,8 @@ const clean = (a: number): number => (Math.abs(a) < 1e-9 ? 0 : a);
 export function analyze(circuit: Circuit): Analysis {
   const diagnostics: Diagnostic[] = [];
   const results: Record<string, PartResult> = {};
-  const { netlist, pinNode, skipped } = buildNetlist(circuit);
+  const { netlist, pinNode, holeNode, skipped } = buildNetlist(circuit);
+  const noVoltage = () => null;
 
   for (const s of skipped) {
     const part = circuit.parts.find((p) => p.id === s.partId);
@@ -82,7 +85,15 @@ export function analyze(circuit: Circuit): Analysis {
           'A real battery would get hot, a real USB port would shut itself off, and nothing else in the circuit would work. ' +
           'Put a resistor (or a load) in the path.',
       });
-      return { ok: false, nodeVoltages: [0], sourceCurrents: {}, results, diagnostics, story: [] };
+      return {
+        ok: false,
+        nodeVoltages: [0],
+        sourceCurrents: {},
+        results,
+        diagnostics,
+        story: [],
+        voltageAtHole: noVoltage,
+      };
     }
   }
 
@@ -94,6 +105,7 @@ export function analyze(circuit: Circuit): Analysis {
       results,
       diagnostics,
       story: ['Nothing is connected yet. Drop a power source, a resistor and an LED on the bench.'],
+      voltageAtHole: noVoltage,
     };
   }
 
@@ -109,7 +121,15 @@ export function analyze(circuit: Circuit): Analysis {
           ? 'Two different voltages are being forced onto the same point, which cannot physically happen. Check for two sources wired against each other.'
           : String(err),
     });
-    return { ok: false, nodeVoltages: [0], sourceCurrents: {}, results, diagnostics, story: [] };
+    return {
+      ok: false,
+      nodeVoltages: [0],
+      sourceCurrents: {},
+      results,
+      diagnostics,
+      story: [],
+      voltageAtHole: noVoltage,
+    };
   }
 
   if (!solution.converged) {
@@ -235,6 +255,13 @@ export function analyze(circuit: Circuit): Analysis {
     results,
     diagnostics,
     story: buildStory(circuit, results, sourceCurrents),
+    voltageAtHole: (hole: string) => {
+      try {
+        return clean(solution.nodeVoltages[holeNode(hole)] ?? 0);
+      } catch {
+        return null; // not a hole on this board
+      }
+    },
     solution,
   };
 }

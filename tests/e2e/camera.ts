@@ -8,7 +8,9 @@ export const VIEWPORT = { width: 1600, height: 1000 };
 /** Must match LabScene.tsx. */
 export const CAMERA = { position: [118, 92, 78], fov: 32, near: 1, far: 2000, target: [-6, 5, 0] };
 
-export function screenPositionOf(holeId: string): { x: number; y: number } {
+/** `heightAboveSurface` aims at a point above the board instead of at the board itself,
+ *  which is how you hit a part's body rather than the hole underneath it. */
+export function screenPositionOf(holeId: string, heightAboveSurface = 0): { x: number; y: number } {
   const p = holePosition(holeId);
   if (!p) throw new Error(`no such hole: ${holeId}`);
   const camera = new PerspectiveCamera(
@@ -20,6 +22,6 @@ export function screenPositionOf(holeId: string): { x: number; y: number } {
   camera.position.set(CAMERA.position[0], CAMERA.position[1], CAMERA.position[2]);
   camera.lookAt(new Vector3(CAMERA.target[0], CAMERA.target[1], CAMERA.target[2]));
   camera.updateMatrixWorld(true);
-  const ndc = new Vector3(p.x, BOARD_SURFACE_Y, p.z).project(camera);
+  const ndc = new Vector3(p.x, BOARD_SURFACE_Y + heightAboveSurface, p.z).project(camera);
   return { x: (ndc.x * 0.5 + 0.5) * VIEWPORT.width, y: (-ndc.y * 0.5 + 0.5) * VIEWPORT.height };
 }

@@ -56,8 +56,8 @@ Everything else follows your outline.
 | # | Module | Prereqs | Hours | Parts | Unlocks |
 |---|---|---|---|---|---|
 | 1 | **What electricity actually is** — charge, voltage, current, and a first look at resistance and Ohm's law. The water analogy and exactly where it lies. Powers of ten. *(written — the reference lesson)* | 0a | 2 | no | battery, USB supply, resistor, LED, wires |
-| 2 | **Resistance, power and energy** — what resists, why things get warm, watts vs joules, why a resistor has a power rating. | 1 | 2 | no | — |
-| 3 | **Circuits** — closed loops, open circuits, short circuits, what "ground" means, schematic symbols, reading your first schematic. | 2 | 2 | no | switch |
+| 2 | **Resistance, power and energy** — what resists, why things get warm, watts vs joules, why a resistor has a power rating. *(written)* | 1 | 2 | no | — |
+| 3 | **Circuits** — closed loops, open circuits, short circuits, what "ground" means, schematic symbols, reading your first schematic. *(written)* | 2 | 2 | no | switch, push button |
 | 4 | **Ohm's law and the power law** — the two equations you will use forever, rearranged every way, with sanity checks. | 3 | 2 | no | — |
 | 5 | **Series, parallel and Kirchhoff's laws** — why current is the same everywhere in a loop, why voltages add up to zero around it. | 4 | 2.5 | no | — |
 | 6 | **Using a multimeter** — volts, ohms, continuity, current, and how to not blow the fuse. Measuring safely. | 5 | 2 | **yes** | virtual multimeter |

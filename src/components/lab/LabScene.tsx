@@ -8,9 +8,10 @@ import { Breadboard, HoleHighlight } from './Breadboard';
 import { PartMesh } from './PartMeshes';
 import { GhostWire, Wire } from './Wires';
 import { Smoke } from './Smoke';
-import { holePosition, BOARD_HEIGHT } from '../../lib/circuit/coords';
+import { holePosition, BOARD_HEIGHT, BOARD_SURFACE_Y } from '../../lib/circuit/coords';
+import { pinHole } from '../../lib/circuit/netlist';
 import type { HoleId } from '../../lib/circuit/board';
-import type { Circuit, Terminal } from '../../lib/circuit/types';
+import type { Circuit, PartInstance, Terminal } from '../../lib/circuit/types';
 import type { Analysis } from '../../lib/circuit/analyze';
 import { terminalPosition } from './positions';
 import { partDef } from '../../lib/circuit/parts';
@@ -31,6 +32,12 @@ export interface SceneProps {
    *  clicks meant for the holes — otherwise a tall part blocks every hole behind it and the
    *  hover readout disagrees with what clicking actually does. */
   selectMode: boolean;
+  hoveredPartId: string | null;
+  onHoverPart: (id: string | null) => void;
+  /** A push button being held down. */
+  onPressPart: (id: string, pressed: boolean) => void;
+  /** A switch being flipped. */
+  onTogglePart: (id: string) => void;
   onHoverHole: (id: HoleId | null) => void;
   onClickHole: (id: HoleId) => void;
   onClickPart: (id: string) => void;
@@ -109,11 +116,42 @@ export function LabScene(props: SceneProps) {
           // A bench supply is always clickable, because its terminals are how you wire to it.
           // Everything else is transparent to clicks unless the select tool is active.
           const clickable = isSource || props.selectMode;
+          // Buttons and switches are operated by clicking them, whatever tool is active:
+          // that is the whole point of having them on the bench.
+          const operable = def.interaction !== undefined && !part.burnt;
           return (
             <group
               key={part.id}
+              onPointerDown={
+                operable && def.interaction === 'momentary'
+                  ? (e) => {
+                      e.stopPropagation();
+                      props.onPressPart(part.id, true);
+                    }
+                  : undefined
+              }
+              onPointerUp={
+                operable && def.interaction === 'momentary'
+                  ? () => props.onPressPart(part.id, false)
+                  : undefined
+              }
+              onPointerOver={
+                props.selectMode
+                  ? (e) => {
+                      e.stopPropagation();
+                      props.onHoverPart(part.id);
+                    }
+                  : undefined
+              }
+              onPointerOut={props.selectMode ? () => props.onHoverPart(null) : undefined}
               onClick={
-                clickable
+                operable && def.interaction === 'toggle'
+                  ? (e) => {
+                      e.stopPropagation();
+                      props.onTogglePart(part.id);
+                      props.onClickPart(part.id);
+                    }
+                  : clickable
                   ? (e) => {
                       e.stopPropagation();
                       if (isSource) {
@@ -129,6 +167,21 @@ export function LabScene(props: SceneProps) {
             >
               <PartMesh part={part} result={props.analysis.results[part.id]} detail={quality} />
             </group>
+          );
+        })}
+
+        {/* Which part is under the pointer, and which one is selected. Without this there is
+            no way to tell what a click is about to act on. */}
+        {props.circuit.parts.map((part) => {
+          const selected = part.id === props.selectedPartId;
+          const hovered = part.id === props.hoveredPartId;
+          if (!selected && !hovered) return null;
+          return (
+            <PartOutline
+              key={`outline-${part.id}`}
+              part={part}
+              color={selected ? '#c47a45' : '#e9ece7'}
+            />
           );
         })}
 
@@ -182,5 +235,38 @@ export function LabScene(props: SceneProps) {
         dampingFactor={0.08}
       />
     </Canvas>
+  );
+}
+
+
+/** Rings in every hole a part occupies, plus a box for parts that sit on the bench.
+ *  Showing the footprint rather than a glow also teaches which holes the part is using. */
+function PartOutline({ part, color }: { part: PartInstance; color: string }) {
+  const def = partDef(part.typeId);
+  const holes = def.pins
+    .map((pin) => pinHole(part, pin.id))
+    .filter((h): h is string => Boolean(h))
+    .map((h) => holePosition(h))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+  if (holes.length === 0) {
+    const pos = part.position ?? { x: -40, z: 0 };
+    return (
+      <mesh position={[pos.x, 8, pos.z]}>
+        <boxGeometry args={[23, 19, 29]} />
+        <meshBasicMaterial color={color} wireframe transparent opacity={0.55} depthTest={false} />
+      </mesh>
+    );
+  }
+
+  return (
+    <group>
+      {holes.map((p, i) => (
+        <mesh key={i} position={[p.x, BOARD_SURFACE_Y + 0.06, p.z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[1.5, 2.25, 28]} />
+          <meshBasicMaterial color={color} transparent opacity={0.95} depthTest={false} />
+        </mesh>
+      ))}
+    </group>
   );
 }

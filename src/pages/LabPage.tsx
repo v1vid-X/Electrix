@@ -5,12 +5,13 @@ import { LabScene, type Quality } from '../components/lab/LabScene';
 import { Button } from '../components/ui/Button';
 import { IconCheck, IconChevron, IconMistake, IconWarning } from '../components/ui/Icon';
 import { analyze, type Diagnostic } from '../lib/circuit/analyze';
-import { COMMON_RESISTORS, LED_COLORS, partList } from '../lib/circuit/parts';
+import { COMMON_RESISTORS, LED_COLORS, partDef, partList } from '../lib/circuit/parts';
 import { emptyCircuit, type Circuit, type Terminal } from '../lib/circuit/types';
 import type { HoleId } from '../lib/circuit/board';
 import { amps, ohms as fmtOhms, volts } from '../lib/format';
 import { presetOrDefault } from '../components/lab/presets';
 import { useAutoQuality } from '../components/lab/useAutoQuality';
+import { Tooltip } from '../components/lab/Tooltip';
 import { CodePanel, type ConsoleLine } from '../components/lab/CodePanel';
 import { findBoard, gpioVolts, withGpio } from '../components/lab/sketchHost';
 import { Sketch, type GpioState, type SketchHost } from '../lib/esp32/runtime';
@@ -40,6 +41,9 @@ export function LabPage() {
   const [future, setFuture] = useState<Circuit[]>([]);
   const [tool, setTool] = useState<Tool>({ kind: 'select' });
   const [hoveredHole, setHoveredHole] = useState<HoleId | null>(null);
+  const [hoveredPartId, setHoveredPartId] = useState<string | null>(null);
+  // Screen position of the pointer, for placing the hover readout.
+  const [screenPointer, setScreenPointer] = useState<{ x: number; y: number } | null>(null);
   const [wireStart, setWireStart] = useState<Terminal | null>(null);
   const [wireColor, setWireColor] = useState(WIRE_COLORS[0]);
   const [pointer, setPointer] = useState<Vector3 | null>(null);
@@ -189,6 +193,37 @@ export function LabPage() {
   // Stop the sketch when the page goes away, so no timer keeps firing.
   useEffect(() => () => sketchRef.current?.stop(), []);
 
+  /** Holding a push button. Deliberately not part of the undo history: pressing a button
+   *  dozens of times should not bury the edit you actually want to undo. */
+  const pressPart = useCallback((id: string, pressed: boolean) => {
+    setCircuit((c) => ({
+      ...c,
+      parts: c.parts.map((p) => (p.id === id ? { ...p, closed: pressed } : p)),
+    }));
+  }, []);
+
+  const togglePart = useCallback(
+    (id: string) => {
+      apply((c) => ({
+        ...c,
+        parts: c.parts.map((p) => (p.id === id ? { ...p, closed: !p.closed } : p)),
+      }));
+    },
+    [apply],
+  );
+
+  // A button must release even if the pointer leaves the scene while held.
+  useEffect(() => {
+    const release = () =>
+      setCircuit((c) =>
+        c.parts.some((p) => p.closed && partDef(p.typeId).interaction === 'momentary')
+          ? { ...c, parts: c.parts.map((p) => (partDef(p.typeId).interaction === 'momentary' ? { ...p, closed: false } : p)) }
+          : c,
+      );
+    window.addEventListener('pointerup', release);
+    return () => window.removeEventListener('pointerup', release);
+  }, []);
+
   const undo = useCallback(() => {
     setHistory((h) => {
       if (h.length === 0) return h;
@@ -312,7 +347,11 @@ export function LabPage() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#0c0e0d]">
-      <div className="absolute inset-0">
+      <div
+        className="absolute inset-0"
+        onPointerMove={(e) => setScreenPointer({ x: e.clientX, y: e.clientY })}
+        onPointerLeave={() => setScreenPointer(null)}
+      >
         <LabScene
           circuit={circuit}
           analysis={analysis}
@@ -324,6 +363,10 @@ export function LabPage() {
           smoke={smoke}
           quality={quality}
           selectMode={tool.kind === 'select'}
+          hoveredPartId={hoveredPartId}
+          onHoverPart={setHoveredPartId}
+          onPressPart={pressPart}
+          onTogglePart={togglePart}
           onHoverHole={setHoveredHole}
           onClickHole={handleClickHole}
           onClickPart={(id) => setSelectedPartId(id)}
@@ -331,6 +374,14 @@ export function LabPage() {
           onPointerMove={setPointer}
         />
       </div>
+
+      <Tooltip
+        circuit={simCircuit}
+        analysis={analysis}
+        partId={tool.kind === 'select' ? hoveredPartId : null}
+        hole={tool.kind === 'select' && hoveredPartId ? null : hoveredHole}
+        at={screenPointer}
+      />
 
       {/* Top-left toolbar */}
       <div className="pointer-events-none absolute inset-0 flex flex-col">

@@ -50,6 +50,8 @@ export interface PartDef {
   limits?: PartLimits;
   /** The pin that defines 0 V for the whole circuit, if this part provides one. */
   groundPin?: string;
+  /** How the learner operates it in the Lab. 'momentary' is held down, 'toggle' latches. */
+  interaction?: 'momentary' | 'toggle';
   /** Turns an instance into solver elements. `node` resolves one of this part's pins;
    *  `newNode` mints a private node, for parts with internal structure. */
   toElements: (
@@ -248,6 +250,56 @@ const PART_LIST: readonly PartDef[] = [
       }
       return out;
     },
+  },
+  {
+    typeId: 'push-button',
+    name: 'Push button',
+    category: 'input',
+    summary:
+      'Connects its two sides only while you hold it down. The two legs on each side are joined inside.',
+    unlockModule: 3,
+    onBoard: true,
+    interaction: 'momentary',
+    // A 6 mm tactile switch straddles the centre channel: two legs each side, two rows apart.
+    pins: [
+      { id: 'l1', label: 'left leg 1', dCol: 0, dRow: 0 },
+      { id: 'l2', label: 'left leg 2', dCol: 0, dRow: 2 },
+      { id: 'r1', label: 'right leg 1', dCol: 1, dRow: 0 },
+      { id: 'r2', label: 'right leg 2', dCol: 1, dRow: 2 },
+    ],
+    toElements: (part, node) => {
+      const link = (id: string, a: number, b: number): Element => ({
+        kind: 'resistor',
+        id: `${part.id}:${id}`,
+        a,
+        b,
+        ohms: 0.01,
+      });
+      // The pairs on each side are permanently joined — the classic beginner surprise.
+      const elements = [
+        link('left', node('l1'), node('l2')),
+        link('right', node('r1'), node('r2')),
+      ];
+      if (part.closed) elements.push(link('contact', node('l1'), node('r1')));
+      return elements;
+    },
+  },
+  {
+    typeId: 'switch',
+    name: 'Switch',
+    category: 'input',
+    summary: 'Click it to flip it. Stays where you put it: on joins its two legs, off breaks them.',
+    unlockModule: 3,
+    onBoard: true,
+    interaction: 'toggle',
+    pins: [
+      { id: 'a', label: 'leg 1', dCol: 0, dRow: 0 },
+      { id: 'b', label: 'leg 2', dCol: 0, dRow: 3 },
+    ],
+    toElements: (part, node) =>
+      part.closed
+        ? [{ kind: 'resistor', id: `${part.id}:contact`, a: node('a'), b: node('b'), ohms: 0.01 }]
+        : [],
   },
   {
     typeId: 'wire-link',

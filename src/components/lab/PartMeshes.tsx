@@ -219,6 +219,66 @@ export function LedMesh({ part, result, detail = 'high' }: { part: PartInstance;
   );
 }
 
+/** A 6 mm tactile switch, straddling the centre channel on four legs. */
+export function ButtonMesh({ part }: { part: PartInstance }) {
+  const corners = ['l1', 'l2', 'r1', 'r2']
+    .map((id) => pinHole(part, id))
+    .map((h) => (h ? holePosition(h) : null));
+  if (corners.some((c) => !c)) return null;
+  const pts = corners as { x: number; z: number }[];
+  const cx = (pts[0].x + pts[2].x) / 2;
+  const cz = (pts[0].z + pts[1].z) / 2;
+  const bodyY = TOP + 1.9;
+  const pressed = part.closed === true;
+
+  return (
+    <group>
+      <mesh position={[cx, bodyY, cz]} castShadow receiveShadow>
+        <boxGeometry args={[6.2, 3.4, 6.2]} />
+        <meshStandardMaterial color="#1b1d1f" roughness={0.65} />
+      </mesh>
+      {/* The cap actually goes down while it is held. */}
+      <mesh position={[cx, bodyY + 2.2 - (pressed ? 0.7 : 0), cz]} castShadow>
+        <cylinderGeometry args={[1.75, 1.85, 1.8, 24]} />
+        <meshStandardMaterial color={pressed ? '#9c3b2f' : '#b8473a'} roughness={0.45} />
+      </mesh>
+      {pts.map((p, i) => (
+        <Lead key={i} from={new Vector3(p.x, TOP - 1.6, p.z)} to={new Vector3(p.x, bodyY - 1, p.z)} radius={0.3} />
+      ))}
+    </group>
+  );
+}
+
+/** A slide switch: the nub moves, and stays where you put it. */
+export function SwitchMesh({ part }: { part: PartInstance }) {
+  const a = pinHole(part, 'a');
+  const b = pinHole(part, 'b');
+  const pa = a ? holePosition(a) : null;
+  const pb = b ? holePosition(b) : null;
+  if (!pa || !pb) return null;
+  const cx = (pa.x + pb.x) / 2;
+  const cz = (pa.z + pb.z) / 2;
+  const along = new Vector3(pb.x - pa.x, 0, pb.z - pa.z).normalize();
+  const bodyY = TOP + 2.1;
+  const on = part.closed === true;
+  const nub = new Vector3(cx, bodyY + 2.1, cz).add(along.clone().multiplyScalar(on ? 1.5 : -1.5));
+
+  return (
+    <group>
+      <mesh position={[cx, bodyY, cz]} castShadow receiveShadow>
+        <boxGeometry args={[4.4, 3.6, 8]} />
+        <meshStandardMaterial color="#d9dadc" roughness={0.55} />
+      </mesh>
+      <mesh position={nub} castShadow>
+        <boxGeometry args={[2, 2.2, 2.4]} />
+        <meshStandardMaterial color={on ? '#58b57c' : '#3a3f42'} roughness={0.5} />
+      </mesh>
+      <Lead from={new Vector3(pa.x, TOP - 1.6, pa.z)} to={new Vector3(pa.x, bodyY - 1.2, pa.z)} radius={0.3} />
+      <Lead from={new Vector3(pb.x, TOP - 1.6, pb.z)} to={new Vector3(pb.x, bodyY - 1.2, pb.z)} radius={0.3} />
+    </group>
+  );
+}
+
 /** Bench power: a block battery or a USB brick, sitting beside the board. */
 export function SourceMesh({ part }: { part: PartInstance }) {
   const pos = part.position ?? { x: -40, z: 0 };
@@ -312,5 +372,7 @@ export function PartMesh({
   if (def.category === 'power') return <SourceMesh part={part} />;
   if (part.typeId === 'led') return <LedMesh part={part} result={result} detail={detail} />;
   if (part.typeId === 'resistor') return <ResistorMesh part={part} />;
+  if (part.typeId === 'push-button') return <ButtonMesh part={part} />;
+  if (part.typeId === 'switch') return <SwitchMesh part={part} />;
   return null;
 }

@@ -2,7 +2,7 @@
 
 Keep this current. Any future session should be able to pick up from this file alone.
 
-Last updated: 2026-11-02 — Lab pointer and geometry fixes, found by using the installed app.
+Last updated: 2026-11-02 — hover readout, selection outline, switches, modules 2 and 3.
 
 ---
 
@@ -72,6 +72,30 @@ Last updated: 2026-11-02 — Lab pointer and geometry fixes, found by using the 
 - Verified by launching the real Electron app under Xvfb: home, lesson (33 KaTeX nodes, both
   widgets) and the Lab (3D canvas, lazy chunk) all render off disk.
 
+### Telling what you are looking at
+Reported: "you can't see what you are selecting" and "I don't know what shit is because it's
+so unrealistic". The second one was not really about rendering — a beginner cannot name a grey
+cylinder, however well it is lit. The brief asked for a hover readout and it had never been
+built.
+
+- **Hover readout** (`Tooltip.tsx`). Over a part: its name, its value, what it does in one
+  line, and the live voltage across it, current through it and heat it is making. Over a
+  hole: which hole it is, what voltage that point sits at, and **which other holes are joined
+  to it inside the board** — the whole breadboard lesson, in the thing you were already
+  pointing at. It sits above the pointer so it never covers what it is describing.
+- **Selection and hover outline** in 3D: copper rings in every hole the part occupies, white
+  while hovering. Showing the footprint rather than a glow also teaches which holes are in use.
+- `Analysis` gained `voltageAtHole()`, and `buildNetlist` a `holeNode()`, so the UI can report
+  the voltage at any point on the board.
+
+### Parts you can operate
+- **Push button**: a 6 mm tactile switch, four legs, straddling the centre channel. The two
+  legs on each side are permanently joined — modelled properly, because that is the classic
+  trap. Hold it down and it conducts; the cap moves while held. Pressing is deliberately kept
+  out of the undo history.
+- **Switch**: click to flip, stays put, the nub moves and turns green.
+- Module 21's button section no longer has to be faked with a wire.
+
 ### Making the Lab look real
 - Filmic (ACES) tone mapping, and image-based lighting generated in code from three's own
   room scene — no asset to download, so it still works offline in the desktop app.
@@ -140,6 +164,12 @@ line up to the breadboard". Both were real, and both are now covered by browser 
   6.59 mA."*
 
 ### Lesson content, continued
+- `curriculum/02-resistance-power-energy.md` — what resistance physically is, power as joules
+  per second, the three forms of the power law, why a resistor's rating is about its size, and
+  how to work out the voltage a part can stand.
+- `curriculum/03-circuits.md` — loops, open circuits, short circuits (including the subtle
+  kind that bypasses a resistor), what ground actually means, shared grounds, and reading a
+  schematic. Unlocks the switch and the push button.
 - `curriculum/20-what-a-microcontroller-is.md` — what a microcontroller is, the five parts
   that matter, and why a GPIO pin is not a power supply.
 - `curriculum/21-first-code.md` — blink, line by line, plus reading a button, pull-down
@@ -147,7 +177,7 @@ line up to the breadboard". Both were real, and both are now covered by browser 
 - Both open with a "you are jumping ahead" callout naming the modules they lean on that are
   not written yet.
 
-### Tests — 164 unit + 23 browser
+### Tests — 169 unit + 29 browser
 `npm test` runs the unit tests in about two seconds. `npm run test:lab` runs the browser
 checks against a dev server (`npm run dev -- --port 5181`); they need Playwright and a
 Chromium build, which is why they are a separate script and excluded from the typecheck.
@@ -159,7 +189,10 @@ agrees — across both halves, both ends, the rails and the centre gap. Reintrod
 4 mm offset makes it fail on 12 of 14 holes, which is how it was confirmed to be worth
 having. `tests/e2e/lab-workflow.test.ts` builds the blink circuit entirely by clicking:
 place a resistor, place an LED, draw three wires, run the sketch, check the LED lights with
-the right arithmetic, then undo, redo and clear.
+the right arithmetic, then undo, redo and clear. `tests/e2e/lab-inspect.test.ts` checks the
+hover readout names the part and its value, reports a live current once the sketch is driving
+the LED, lists exactly the five holes joined to the one under the pointer, does not claim
+anything across the centre gap is joined, and that clicking a switch flips it.
 
 The unit tests cover: Ohm's law and the power law, series/parallel, voltage dividers, LED
 resistor sizing, RC time constants, battery life, engineering-notation formatting, SM-2
@@ -233,12 +266,12 @@ Roughly in the order the addendum asks for.
 - "Build it" pages for hands-on modules (parts list, wiring, expected result, debug order).
 
 **ESP32, still missing**
-- A push button part, so module 21's button section can be built rather than faked with a wire.
 - `analogRead`, PWM / `analogWrite`, and `INPUT_PULLUP` — all blocked on datasheet figures.
 - Uploading to real hardware. The Lab simulates; it does not flash a board.
 
 **Curriculum**
-- Modules 0a, 0b, 0c, 2–19 and 22 onwards. Module 1 is the template to copy.
+- Modules 0a, 0b, 0c, 4–19 and 22 onwards. Module 1 is the template to copy.
+- Five of 39 written: 1, 2, 3, 20, 21.
 
 ---
 

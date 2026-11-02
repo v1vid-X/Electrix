@@ -82,6 +82,8 @@ export interface BuiltNetlist {
   nodeOf: Map<string, number>;
   /** Solver node number for a given pin of a given part. */
   pinNode: (partId: string, pinId: string) => number;
+  /** Solver node number for a breadboard hole. */
+  holeNode: (hole: HoleId) => number;
   /** Parts that were skipped, with the reason. */
   skipped: { partId: string; reason: string }[];
 }
@@ -148,5 +150,7 @@ export function buildNetlist(circuit: Circuit): BuiltNetlist {
     return nodeForKey(pinKey(part, pinId, circuit));
   };
 
-  return { netlist: { nodeCount: next - 1, elements }, nodeOf, pinNode, skipped };
+  const holeNode = (hole: HoleId): number => nodeForKey(`strip:${stripOf(hole, circuit.board)}`);
+
+  return { netlist: { nodeCount: next - 1, elements }, nodeOf, pinNode, holeNode, skipped };
 }
