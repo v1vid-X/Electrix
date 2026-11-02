@@ -37,17 +37,26 @@ jobs:
           path: release/*.exe
           if-no-files-found: error
 
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/v')
-        # bash, because PowerShell does not expand release/*.exe for gh.
+      # Publishing from CI rather than from a pushed tag: the workflow's own token can
+      # create the tag and release, and it means every build keeps the download link fresh.
+      - name: Publish the installer as a release
         shell: bash
         run: |
           set -euo pipefail
           ls -la release/*.exe
-          gh release create "${{ github.ref_name }}" release/*.exe \
-            --title "Circuit Brain ${{ github.ref_name }}" \
-            --notes "Windows installer. Unsigned, so Windows SmartScreen will warn on first run: click More info, then Run anyway. Or right-click the downloaded file, Properties, tick Unblock, OK.
-
-          Install it and open it like any other program. No Node.js or terminal needed."
+          TAG="v$(node -p "require('./package.json').version")"
+          NOTES=$'Windows installer for Circuit Brain. No Node.js or terminal needed.\n\nIt is not code-signed, so Windows SmartScreen warns the first time. Either click **More info -> Run anyway**, or right-click the downloaded file, choose **Properties**, tick **Unblock**, press OK, and run it.\n\nBuilt from `'"$GITHUB_SHA"$'`.'
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists; replacing the installer."
+            gh release upload "$TAG" release/*.exe --clobber
+            gh release edit "$TAG" --notes "$NOTES"
+          else
+            echo "Creating release $TAG."
+            gh release create "$TAG" release/*.exe \
+              --target "$GITHUB_SHA" \
+              --title "Circuit Brain $TAG" \
+              --notes "$NOTES"
+          fi
+          gh release view "$TAG" --json url,assets --jq '.url, (.assets[].name)'
         env:
           GH_TOKEN: ${{ github.token }}
