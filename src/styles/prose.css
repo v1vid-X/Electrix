@@ -1,0 +1,190 @@
+/* Lesson typography. Serif body for long reading, mono for every number.
+   Rules that match by element name are excluded from .cb-ui subtrees (widgets, quizzes,
+   callouts), which style themselves and must not inherit prose margins. */
+.prose {
+  font-family: var(--font-serif);
+  font-size: var(--t-body);
+  line-height: 1.7;
+  color: var(--color-ink);
+  max-width: 68ch;
+}
+
+.prose > * + * {
+  margin-top: 1em;
+}
+
+.prose :is(h2, h3, h4):not(.cb-ui *) {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  scroll-margin-top: 88px;
+}
+
+.prose h2:not(.cb-ui *) {
+  font-size: var(--t-h2);
+  margin-top: 2.5em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--color-line);
+}
+
+.prose h3:not(.cb-ui *) {
+  font-size: var(--t-h3);
+  margin-top: 2em;
+}
+
+.prose h4:not(.cb-ui *) {
+  font-size: 1rem;
+  margin-top: 1.75em;
+  color: var(--color-ink-2);
+}
+
+.prose strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: color var(--m-fast) var(--ease-out);
+}
+.prose a:hover {
+  color: var(--color-accent-hi);
+}
+
+.prose :is(ul, ol):not(.cb-ui *) {
+  padding-left: 1.4em;
+}
+.prose li:not(.cb-ui *) + li {
+  margin-top: 0.4em;
+}
+.prose ul > li::marker {
+  color: var(--color-ink-3);
+}
+.prose ol > li::marker {
+  color: var(--color-ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.prose blockquote:not(.cb-ui *) {
+  border-left: 2px solid var(--color-line-strong);
+  padding-left: 1em;
+  color: var(--color-ink-2);
+  font-style: italic;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  margin: 2.5em 0;
+}
+
+/* Inline code and numbers */
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+  font-variant-numeric: tabular-nums;
+}
+
+.prose table:not(.cb-ui *) {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: var(--t-ui);
+}
+.prose thead:not(.cb-ui *) th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-ink-2);
+  border-bottom: 1px solid var(--color-line-strong);
+  padding: 0.5em 0.75em;
+}
+.prose tbody:not(.cb-ui *) td {
+  border-bottom: 1px solid var(--color-line);
+  padding: 0.5em 0.75em;
+  vertical-align: top;
+}
+.prose tbody:not(.cb-ui *) tr:hover {
+  background: var(--color-surface);
+}
+
+/* KaTeX: match the surrounding size, let long display math scroll. */
+.prose .katex {
+  font-size: 1.04em;
+}
+.prose .katex-display {
+  margin: 1.2em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.4em 0;
+}
+
+.prose img,
+.prose svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Full-bleed children (widgets, callouts, code) escape the 68ch measure slightly. */
+.prose .bleed {
+  max-width: min(100%, 76ch);
+}
+
+/* Sliders: one look everywhere, track coloured by the quantity it controls. */
+.cb-slider {
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  outline-offset: 6px;
+  cursor: pointer;
+}
+.cb-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--color-ink);
+  border: 3px solid var(--color-bg);
+  box-shadow: 0 0 0 1px var(--cb-fill, var(--color-accent));
+  transition: transform var(--m-fast) var(--ease-out);
+}
+.cb-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+.cb-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--color-ink);
+  border: 3px solid var(--color-bg);
+  box-shadow: 0 0 0 1px var(--cb-fill, var(--color-accent));
+}
+
+/* Callout bodies keep prose rhythm without inheriting prose's own margins. */
+.callout-body > * + * {
+  margin-top: 0.75em;
+}
+.callout-body ul,
+.callout-body ol {
+  padding-left: 1.3em;
+}
+.callout-body :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+}
