@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -13,4 +14,8 @@ export default defineConfig({
   },
   // Lessons live in /curriculum (outside src) and are imported with ?raw.
   server: { fs: { allow: ['.'] } },
+  test: {
+    // tests/e2e needs a running server, so it has its own config and npm script.
+    include: ['tests/*.test.ts'],
+  },
 });

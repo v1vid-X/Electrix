@@ -18,6 +18,12 @@ export const BOARD_WIDTH = 50;
 export const BOARD_LENGTH = ROWS * PITCH_MM + 6;
 export const BOARD_HEIGHT = 9;
 
+/** Y of the board's top face, in millimetres. Everything that touches the board — the
+ *  printed surface, the invisible click targets, the hover ring, part legs and wire ends —
+ *  measures from this one number. They used to be set independently, and a 4 mm mismatch
+ *  between the surface you see and the targets you click made the pointer miss by two holes. */
+export const BOARD_SURFACE_Y = BOARD_HEIGHT;
+
 const COLUMN_X: Record<Column, number> = {
   a: -13.97,
   b: -11.43,

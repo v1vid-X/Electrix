@@ -36,7 +36,8 @@ npm run dev      # http://localhost:5173
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server with instant reload |
-| `npm test` | 112 unit tests: the maths, the solver, breadboard wiring |
+| `npm test` | Unit tests: the maths, the solver, breadboard wiring |
+| `npm run test:lab` | Browser tests for the Lab (needs `npm run dev` running) |
 | `npm run check` | TypeScript typecheck |
 | `npm run build` | Typecheck + production build into `dist/` |
 | `npm run app` | Build and open the desktop app locally |

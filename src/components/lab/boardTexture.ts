@@ -6,7 +6,7 @@ import { allHoles, BOARD_LENGTH, BOARD_WIDTH, rowZ } from '../../lib/circuit/coo
 import { COLUMNS, ROWS } from '../../lib/circuit/board';
 import { holePosition } from '../../lib/circuit/coords';
 
-const PX_PER_MM = 18;
+const PX_PER_MM = 26;
 
 export function makeBoardTexture(): CanvasTexture {
   const w = Math.round(BOARD_WIDTH * PX_PER_MM);
@@ -96,6 +96,6 @@ export function makeBoardTexture(): CanvasTexture {
 
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = 8;
+  texture.anisotropy = 16;
   return texture;
 }

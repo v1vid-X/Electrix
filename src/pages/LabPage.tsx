@@ -321,6 +321,7 @@ export function LabPage() {
           selectedPartId={selectedPartId}
           smoke={smoke}
           quality={quality}
+          selectMode={tool.kind === 'select'}
           onHoverHole={setHoveredHole}
           onClickHole={handleClickHole}
           onClickPart={(id) => setSelectedPartId(id)}
@@ -628,7 +629,10 @@ export function LabPage() {
           </Panel>
 
           <Panel className="px-3 py-2 font-mono text-[11.5px] text-ink-3">
-            drag to orbit · scroll to zoom · W wire · R rotate · Del delete · Ctrl+Z undo · Esc cancel
+            <span className={hoveredHole ? 'text-accent' : ''}>
+              {hoveredHole ? `hole ${hoveredHole}` : 'no hole'}
+            </span>
+            {'  ·  '}drag to orbit · scroll to zoom · W wire · R rotate · Del delete · Ctrl+Z undo · Esc cancel
           </Panel>
 
           {selected && (

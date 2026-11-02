@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { CatmullRomCurve3, Vector3 } from 'three';
-import { BOARD_HEIGHT, holePosition } from '../../lib/circuit/coords';
+import { Quaternion, Vector3 } from 'three';
+import { BOARD_SURFACE_Y, holePosition } from '../../lib/circuit/coords';
 import { bandsFor } from '../../lib/colorCode';
 import { makeEsp32Texture } from './esp32Texture';
 import { LEFT_PINS } from '../../lib/esp32/pins';
@@ -9,65 +9,91 @@ import { pinHole } from '../../lib/circuit/netlist';
 import type { PartInstance } from '../../lib/circuit/types';
 import type { PartResult } from '../../lib/circuit/analyze';
 
-const TOP = BOARD_HEIGHT;
+const TOP = BOARD_SURFACE_Y;
+const UP = new Vector3(0, 1, 0);
 
-/** A leg: a thin wire from the part's body down into a hole. */
-function Leg({ from, to }: { from: [number, number, number]; to: [number, number, number] }) {
-  const curve = useMemo(() => {
-    const a = new Vector3(...from);
-    const b = new Vector3(...to);
-    const mid = a.clone().lerp(b, 0.5);
-    mid.y = Math.max(a.y, b.y) * 0.75;
-    return new CatmullRomCurve3([a, mid, b]);
-  }, [from, to]);
+/** Position, orientation and length of a cylinder spanning two points.
+ *  Building every leg and body this way means a part's geometry always follows its real pin
+ *  positions — the previous code rotated with an Euler angle that had no effect at all, so
+ *  rotated parts pointed the wrong way. */
+function segment(from: Vector3, to: Vector3) {
+  const dir = to.clone().sub(from);
+  const length = Math.max(dir.length(), 1e-4);
+  return {
+    position: from.clone().add(to).multiplyScalar(0.5),
+    quaternion: new Quaternion().setFromUnitVectors(UP, dir.clone().normalize()),
+    length,
+  };
+}
 
+/** A metal lead. */
+function Rod({ from, to, radius = 0.26 }: { from: Vector3; to: Vector3; radius?: number }) {
+  const s = useMemo(() => segment(from, to), [from, to]);
   return (
-    <mesh castShadow>
-      <tubeGeometry args={[curve, 12, 0.28, 6, false]} />
-      <meshStandardMaterial color="#ced2d6" roughness={0.28} metalness={0.6} />
+    <mesh position={s.position} quaternion={s.quaternion} castShadow>
+      <cylinderGeometry args={[radius, radius, s.length, 10]} />
+      <meshStandardMaterial color="#cdd2d6" roughness={0.3} metalness={0.55} />
     </mesh>
   );
 }
+
+const at = (p: { x: number; z: number }, y: number) => new Vector3(p.x, y, p.z);
 
 export function ResistorMesh({ part }: { part: PartInstance }) {
   const a = pinHole(part, 'a');
   const b = pinHole(part, 'b');
   const pa = a ? holePosition(a) : null;
   const pb = b ? holePosition(b) : null;
-  if (!pa || !pb) return null;
 
-  const mid = { x: (pa.x + pb.x) / 2, z: (pa.z + pb.z) / 2 };
-  const bodyY = TOP + 2.2;
-  const angle = Math.atan2(pb.x - pa.x, pb.z - pa.z);
+  const geo = useMemo(() => {
+    if (!pa || !pb) return null;
+    // Legs go into the holes; the body sits just above the board between them.
+    const bodyY = TOP + 1.5;
+    const legTopA = at(pa, bodyY);
+    const legTopB = at(pb, bodyY);
+    const axis = legTopB.clone().sub(legTopA);
+    const span = axis.length();
+    const dir = axis.clone().normalize();
+    // Leave a little lead showing at each end, like a real axial part.
+    const bodyLength = Math.max(span - 2.4, 1.5);
+    const start = legTopA.clone().add(dir.clone().multiplyScalar((span - bodyLength) / 2));
+    const end = start.clone().add(dir.clone().multiplyScalar(bodyLength));
+    return { bodyY, legTopA, legTopB, start, end, dir, bodyLength, ...segment(start, end) };
+  }, [pa, pb]);
+
+  if (!pa || !pb || !geo) return null;
+
   const bands = bandsFor(part.value ?? 330);
   const burnt = part.burnt === true;
+  const R = 1.05;
 
   return (
     <group>
-      <group position={[mid.x, bodyY, mid.z]} rotation={[Math.PI / 2, angle, 0]}>
-        <mesh castShadow>
-          <cylinderGeometry args={[1.1, 1.1, 6.2, 16]} />
-          <meshStandardMaterial color={burnt ? '#2a2724' : '#d9c9a3'} roughness={0.6} />
+      <mesh position={geo.position} quaternion={geo.quaternion} castShadow>
+        <cylinderGeometry args={[R, R, geo.bodyLength, 18]} />
+        <meshStandardMaterial color={burnt ? '#2a2724' : '#d9c9a3'} roughness={0.6} />
+      </mesh>
+      {/* Rounded shoulders, so it reads as a real part rather than a plain tube. */}
+      {[geo.start, geo.end].map((p, i) => (
+        <mesh key={i} position={p} castShadow>
+          <sphereGeometry args={[R, 14, 10]} />
+          <meshStandardMaterial color={burnt ? '#2a2724' : '#d2c097' } roughness={0.65} />
         </mesh>
-        {/* End caps, so it reads as a real axial part. */}
-        {[-3.1, 3.1].map((y) => (
-          <mesh key={y} position={[0, y, 0]}>
-            <cylinderGeometry args={[1.11, 1.11, 0.5, 16]} />
-            <meshStandardMaterial color={burnt ? '#1d1b19' : '#cdbb92'} roughness={0.7} />
-          </mesh>
-        ))}
-        {!burnt &&
-          bands.colors.map((color, i) => (
-            <mesh key={i} position={[0, -1.8 + i * 1.2 + (i === 3 ? 0.5 : 0), 0]}>
-              <cylinderGeometry args={[1.16, 1.16, i === 3 ? 0.5 : 0.7, 16]} />
+      ))}
+      {!burnt &&
+        bands.colors.map((color, i) => {
+          // Three value bands grouped at one end, tolerance band set apart at the other.
+          const t = i < 3 ? 0.2 + i * 0.14 : 0.84;
+          const p = geo.start.clone().lerp(geo.end, t);
+          return (
+            <mesh key={i} position={p} quaternion={geo.quaternion}>
+              <cylinderGeometry args={[R + 0.05, R + 0.05, i === 3 ? 0.5 : 0.62, 18]} />
               <meshStandardMaterial color={color} roughness={0.5} />
             </mesh>
-          ))}
-      </group>
-      <Leg from={[pa.x, TOP + 1.4, pa.z]} to={[pa.x, TOP - 1, pa.z]} />
-      <Leg from={[pb.x, TOP + 1.4, pb.z]} to={[pb.x, TOP - 1, pb.z]} />
-      <Leg from={[mid.x, bodyY, mid.z]} to={[pa.x, TOP + 1.4, pa.z]} />
-      <Leg from={[mid.x, bodyY, mid.z]} to={[pb.x, TOP + 1.4, pb.z]} />
+          );
+        })}
+      <Rod from={at(pa, TOP - 1.6)} to={geo.start} />
+      <Rod from={at(pb, TOP - 1.6)} to={geo.end} />
     </group>
   );
 }
@@ -81,46 +107,48 @@ export function LedMesh({ part, result }: { part: PartInstance; result?: PartRes
 
   const spec = LED_COLORS[part.color ?? 'red'] ?? LED_COLORS.red;
   const brightness = part.burnt ? 0 : Math.min(1, result?.brightness ?? 0);
+  // A 5 mm LED: 2.5 mm radius body, a flange at the bottom, dome on top.
   const mid = { x: (pa.x + pc.x) / 2, z: (pa.z + pc.z) / 2 };
-  const bodyY = TOP + 4.4;
+  const flangeY = TOP + 2.0;
+  const bodyHeight = 3.2;
+  const domeY = flangeY + bodyHeight;
+  const colour = part.burnt ? '#3a3632' : spec.hex;
+  const lens = (
+    <meshStandardMaterial
+      color={colour}
+      emissive={part.burnt ? '#000000' : spec.hex}
+      emissiveIntensity={brightness * 2.6}
+      transparent
+      opacity={part.burnt ? 1 : 0.8}
+      roughness={0.22}
+    />
+  );
 
   return (
     <group>
-      <group position={[mid.x, bodyY, mid.z]}>
-        {/* Dome */}
-        <mesh castShadow>
-          <sphereGeometry args={[2.5, 20, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
-          <meshStandardMaterial
-            color={part.burnt ? '#3a3632' : spec.hex}
-            emissive={part.burnt ? '#000000' : spec.hex}
-            emissiveIntensity={brightness * 3}
-            transparent
-            opacity={part.burnt ? 1 : 0.82}
-            roughness={0.25}
-          />
+      <group position={[mid.x, 0, mid.z]}>
+        <mesh position={[0, domeY, 0]} castShadow>
+          <sphereGeometry args={[2.5, 22, 14, 0, Math.PI * 2, 0, Math.PI / 2]} />
+          {lens}
         </mesh>
-        {/* Body below the dome, with the flat side on the cathode. */}
-        <mesh position={[0, -1.4, 0]} castShadow>
-          <cylinderGeometry args={[2.5, 2.5, 2.8, 20]} />
-          <meshStandardMaterial
-            color={part.burnt ? '#3a3632' : spec.hex}
-            emissive={part.burnt ? '#000000' : spec.hex}
-            emissiveIntensity={brightness * 1.4}
-            transparent
-            opacity={part.burnt ? 1 : 0.82}
-            roughness={0.3}
-          />
+        <mesh position={[0, flangeY + bodyHeight / 2, 0]} castShadow>
+          <cylinderGeometry args={[2.5, 2.5, bodyHeight, 22]} />
+          {lens}
         </mesh>
-        <mesh position={[0, -2.9, 0]}>
-          <cylinderGeometry args={[2.9, 2.9, 0.7, 20]} />
-          <meshStandardMaterial color={part.burnt ? '#2a2724' : '#cfd3d6'} roughness={0.5} metalness={0.3} />
+        {/* The flange around the base, which is how you tell a real LED's orientation. */}
+        <mesh position={[0, flangeY + 0.25, 0]} castShadow>
+          <cylinderGeometry args={[2.95, 2.95, 0.5, 22]} />
+          <meshStandardMaterial color={part.burnt ? '#2a2724' : colour} transparent opacity={part.burnt ? 1 : 0.85} roughness={0.4} />
         </mesh>
-        {brightness > 0.08 && (
-          <pointLight color={spec.hex} intensity={brightness * 20} distance={38} decay={2} />
+        {brightness > 0.06 && (
+          <pointLight position={[0, domeY, 0]} color={spec.hex} intensity={brightness * 22} distance={44} decay={2} />
         )}
       </group>
-      <Leg from={[mid.x, bodyY - 3, mid.z]} to={[pa.x, TOP - 1, pa.z]} />
-      <Leg from={[mid.x, bodyY - 3, mid.z]} to={[pc.x, TOP - 1, pc.z]} />
+      <Rod from={at(pa, TOP - 1.6)} to={at(pa, flangeY)} />
+      <Rod from={at(pc, TOP - 1.6)} to={at(pc, flangeY)} />
+      {/* The short bends from the leads in to the body. */}
+      <Rod from={at(pa, flangeY)} to={new Vector3(mid.x, flangeY, mid.z)} />
+      <Rod from={at(pc, flangeY)} to={new Vector3(mid.x, flangeY, mid.z)} />
     </group>
   );
 }
@@ -135,20 +163,19 @@ export function SourceMesh({ part }: { part: PartInstance }) {
         <boxGeometry args={isUsb ? [20, 16, 26] : [17, 16, 26]} />
         <meshStandardMaterial color={isUsb ? '#46504f' : '#39506a'} roughness={0.55} />
       </mesh>
-      {/* Terminals, so it is obvious where the wires go. */}
       <mesh position={[isUsb ? 0 : -3.5, 16.6, -7]}>
-        <cylinderGeometry args={[2.1, 2.1, 1.6, 12]} />
+        <cylinderGeometry args={[2.1, 2.1, 1.6, 14]} />
         <meshStandardMaterial color="#d8322a" roughness={0.4} metalness={0.5} />
       </mesh>
       <mesh position={[isUsb ? 0 : 3.5, 16.6, 7]}>
-        <cylinderGeometry args={[2.1, 2.1, 1.6, 12]} />
+        <cylinderGeometry args={[2.1, 2.1, 1.6, 14]} />
         <meshStandardMaterial color="#1a1a1a" roughness={0.4} metalness={0.5} />
       </mesh>
     </group>
   );
 }
 
-/** The dev board: a PCB straddling the centre channel, with headers down both sides. */
+/** The dev board: a PCB on headers, straddling the centre channel. */
 export function Esp32Mesh({ part }: { part: PartInstance }) {
   const first = pinHole(part, LEFT_PINS[0].id);
   const last = pinHole(part, LEFT_PINS[LEFT_PINS.length - 1].id);
@@ -164,7 +191,8 @@ export function Esp32Mesh({ part }: { part: PartInstance }) {
   if (!pa || !pb || !pr) return null;
   const cx = (pa.x + pr.x) / 2;
   const cz = (pa.z + pb.z) / 2;
-  const pcbY = TOP + 7;
+  const headerHeight = 5.5;
+  const pcbY = TOP + headerHeight + 0.8;
 
   return (
     <group>
@@ -176,27 +204,29 @@ export function Esp32Mesh({ part }: { part: PartInstance }) {
         <planeGeometry args={[widthMm, lengthMm]} />
         <meshStandardMaterial map={texture} roughness={0.55} />
       </mesh>
-      {/* The metal can of the radio module, standing proud of the PCB. */}
       <mesh position={[cx, pcbY + 1.6, cz - lengthMm * 0.18]} castShadow>
         <boxGeometry args={[widthMm * 0.62, 1.4, lengthMm * 0.4]} />
         <meshStandardMaterial color="#b9bec4" roughness={0.35} metalness={0.8} />
       </mesh>
-      {/* USB socket. */}
       <mesh position={[cx, pcbY + 1.3, cz + lengthMm / 2 - 1]} castShadow>
         <boxGeometry args={[8, 3, 6]} />
         <meshStandardMaterial color="#c9ced3" roughness={0.3} metalness={0.85} />
       </mesh>
-      {/* Header strips and the legs going into the board. */}
       {[pa.x, pr.x].map((x) => (
-        <mesh key={x} position={[x, TOP + 3.2, cz]} castShadow>
-          <boxGeometry args={[2.4, 6, lengthMm - 4]} />
+        <mesh key={x} position={[x, TOP + headerHeight / 2, cz]} castShadow>
+          <boxGeometry args={[2.4, headerHeight, lengthMm - 4]} />
           <meshStandardMaterial color="#17191a" roughness={0.8} />
         </mesh>
       ))}
       {LEFT_PINS.map((_, i) => {
         const z = pa.z + (pb.z - pa.z) * (i / (LEFT_PINS.length - 1));
         return [pa.x, pr.x].map((x) => (
-          <Leg key={`${x}-${i}`} from={[x, TOP + 0.4, z]} to={[x, TOP - 1, z]} />
+          <Rod
+            key={`${x}-${i}`}
+            from={new Vector3(x, TOP - 1.6, z)}
+            to={new Vector3(x, TOP + 0.3, z)}
+            radius={0.3}
+          />
         ));
       })}
     </group>

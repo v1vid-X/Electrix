@@ -2,7 +2,7 @@
 
 Keep this current. Any future session should be able to pick up from this file alone.
 
-Last updated: 2026-11-02 — ESP32 in the Lab, plus modules 20 and 21.
+Last updated: 2026-11-02 — Lab pointer and geometry fixes, found by using the installed app.
 
 ---
 
@@ -72,6 +72,34 @@ Last updated: 2026-11-02 — ESP32 in the Lab, plus modules 20 and 21.
 - Verified by launching the real Electron app under Xvfb: home, lesson (33 KaTeX nodes, both
   widgets) and the Lab (3D canvas, lazy chunk) all render off disk.
 
+### Lab fixes after the first real install
+Reported from a photo of the running app: "the wires just float and the mouse doesn't even
+line up to the breadboard". Both were real, and both are now covered by browser tests.
+
+- **The pointer missed by about two holes.** The invisible click targets sat at
+  `BOARD_HEIGHT / 2`, 4.2 mm *below* the board's visible surface, which was at
+  `BOARD_HEIGHT - 0.28`. With the camera at an angle the ray reached that depth a couple of
+  holes further along. Hovering over `h15` selected `f13`. There is now one exported
+  `BOARD_SURFACE_Y` that the surface, the click targets, the hover ring, part legs and wire
+  ends all measure from.
+- **Parts swallowed clicks meant for holes.** The ESP32 sits between the camera and the
+  holes behind it, and its mesh called `stopPropagation`. Hover ignored parts, so the
+  readout said one thing and clicking did another — the first wire click simply vanished.
+  Parts are now transparent to clicks unless the select tool is active (bench supplies stay
+  clickable, since their terminals are how you wire to them).
+- **Wires ended in mid-air** above the board. They now end 1.1 mm *below* the surface, so
+  they disappear into the hole like a real jumper.
+- **Wires dived through the board.** The five-point Catmull-Rom spline overshot near its
+  ends. Replaced with a quadratic Bezier, which is guaranteed by its convex hull to stay
+  above the line joining its endpoints.
+- **Part rotation did nothing.** `rotation={[Math.PI/2, angle, 0]}` applies the angle before
+  the tilt, and the cylinder's axis *is* the Y axis, so the angle was a no-op and resistors
+  always lay along one axis. Bodies and leads are now built from the real pin positions with
+  a quaternion, so geometry follows the data.
+- Smaller: sharper board silkscreen (26 px/mm), smoother wire tubes, a minimum zoom distance
+  so texels do not show, and the hovered hole id is now displayed in the status bar — useful
+  for learning the grid, and it makes pointer alignment observable.
+
 ### The ESP32 in the Lab (built out of order, by request)
 - `src/lib/esp32/pins.ts` — the board's electrical model. Logic thresholds, output levels and
   drive currents come from the ESP32 datasheet DC characteristics table; everything that
@@ -102,8 +130,21 @@ Last updated: 2026-11-02 — ESP32 in the Lab, plus modules 20 and 21.
 - Both open with a "you are jumping ahead" callout naming the modules they lean on that are
   not written yet.
 
-### Tests — 157 passing
-`npm test`. Covers: Ohm's law and the power law, series/parallel, voltage dividers, LED
+### Tests — 164 unit + 23 browser
+`npm test` runs the unit tests in about two seconds. `npm run test:lab` runs the browser
+checks against a dev server (`npm run dev -- --port 5181`); they need Playwright and a
+Chromium build, which is why they are a separate script and excluded from the typecheck.
+
+The browser checks exist because the two worst bugs so far were invisible to unit tests:
+they only existed on screen. `tests/e2e/lab-pointer.test.ts` works out where a hole *should*
+appear using the same camera the Lab configures, moves the mouse there, and checks the Lab
+agrees — across both halves, both ends, the rails and the centre gap. Reintroducing the old
+4 mm offset makes it fail on 12 of 14 holes, which is how it was confirmed to be worth
+having. `tests/e2e/lab-workflow.test.ts` builds the blink circuit entirely by clicking:
+place a resistor, place an LED, draw three wires, run the sketch, check the LED lights with
+the right arithmetic, then undo, redo and clear.
+
+The unit tests cover: Ohm's law and the power law, series/parallel, voltage dividers, LED
 resistor sizing, RC time constants, battery life, engineering-notation formatting, SM-2
 scheduling, front-matter parsing and table-of-contents generation (including duplicate
 headings), quiz grading and the unit-slip detector, breadboard connectivity (centre gap,
@@ -210,6 +251,9 @@ Roughly in the order the addendum asks for.
 - **Smoke is positioned at the part's anchor hole**, not at the centre of the part body, so it
   can look slightly offset on a resistor.
 - **Only tested in Chromium** (headless, via Playwright). Not checked in Firefox or Safari.
+- **A part can still hide a hole from the current camera angle.** Clicks pass through parts
+  now, but if a part is physically on top of a hole you have to orbit to reach it — same as
+  real life.
 - **espressif.com is blocked** by this cloud session's network policy, which is why four
   ESP32 facts remain unverified. See `docs/open-questions.md` for the two ways to close them.
 - **The Arduino subset is a regex transpiler, not a parser.** It handles the sketches these

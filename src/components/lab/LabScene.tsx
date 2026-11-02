@@ -25,6 +25,10 @@ export interface SceneProps {
   selectedPartId: string | null;
   smoke: { partId: string; startedAt: number }[];
   quality: Quality;
+  /** True when the select tool is active. While wiring or placing, parts must not swallow
+   *  clicks meant for the holes — otherwise a tall part blocks every hole behind it and the
+   *  hover readout disagrees with what clicking actually does. */
+  selectMode: boolean;
   onHoverHole: (id: HoleId | null) => void;
   onClickHole: (id: HoleId) => void;
   onClickPart: (id: string) => void;
@@ -80,19 +84,26 @@ export function LabScene(props: SceneProps) {
         {props.circuit.parts.map((part) => {
           const def = partDef(part.typeId);
           const isSource = def.category === 'power';
+          // A bench supply is always clickable, because its terminals are how you wire to it.
+          // Everything else is transparent to clicks unless the select tool is active.
+          const clickable = isSource || props.selectMode;
           return (
             <group
               key={part.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isSource) {
-                  // Clicking the near half picks +, the far half picks −.
-                  const local = e.point.z - (part.position?.z ?? 0);
-                  props.onClickSourcePin(part.id, local < 0 ? 'pos' : 'neg');
-                } else {
-                  props.onClickPart(part.id);
-                }
-              }}
+              onClick={
+                clickable
+                  ? (e) => {
+                      e.stopPropagation();
+                      if (isSource) {
+                        // Clicking the near half picks +, the far half picks −.
+                        const local = e.point.z - (part.position?.z ?? 0);
+                        props.onClickSourcePin(part.id, local < 0 ? 'pos' : 'neg');
+                      } else {
+                        props.onClickPart(part.id);
+                      }
+                    }
+                  : undefined
+              }
             >
               <PartMesh part={part} result={props.analysis.results[part.id]} />
             </group>
@@ -142,7 +153,7 @@ export function LabScene(props: SceneProps) {
       <OrbitControls
         makeDefault
         target={[-6, 5, 0]}
-        minDistance={40}
+        minDistance={55}
         maxDistance={340}
         maxPolarAngle={Math.PI / 2.08}
         enableDamping
