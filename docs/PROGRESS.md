@@ -301,6 +301,9 @@ Roughly in the order the addendum asks for.
 - **Smoke is positioned at the part's anchor hole**, not at the centre of the part body, so it
   can look slightly offset on a resistor.
 - **Only tested in Chromium** (headless, via Playwright). Not checked in Firefox or Safari.
+- **The browser checks flake occasionally** when the dev server is still recompiling as the
+  page loads. They poll rather than sleep, but at 1-2 fps in a software renderer a rebuild
+  mid-load can still outrun the deadline. Re-run before believing a single failure.
 - **Real-GPU performance is unverified.** This container has no GPU, so everything renders
   through a software rasteriser with no texture hardware — which is precisely where
   environment maps and bump maps cost the most and on real hardware cost the least.
