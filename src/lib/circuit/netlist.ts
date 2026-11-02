@@ -98,10 +98,14 @@ export function buildNetlist(circuit: Circuit): BuiltNetlist {
     uf.union(keyOfTerminal(wire.from, circuit), keyOfTerminal(wire.to, circuit));
   }
 
-  // Ground is the negative terminal of the first power source. Everything is measured
-  // against it, exactly like putting the black probe on the battery's minus.
-  const source = circuit.parts.find((p) => partDef(p.typeId).category === 'power');
-  const groundRoot = source ? uf.find(pinKey(source, 'neg', circuit)) : null;
+  // Ground is the pin a part nominates as 0 V — the battery's minus, or the board's GND.
+  // Everything is measured against it, exactly like putting the black probe there.
+  const grounded =
+    circuit.parts.find((p) => partDef(p.typeId).category === 'power' && partDef(p.typeId).groundPin) ??
+    circuit.parts.find((p) => partDef(p.typeId).groundPin);
+  const groundRoot = grounded
+    ? uf.find(pinKey(grounded, partDef(grounded.typeId).groundPin!, circuit))
+    : null;
 
   const nodeOf = new Map<string, number>();
   let next = 1;
@@ -129,7 +133,13 @@ export function buildNetlist(circuit: Circuit): BuiltNetlist {
       skipped.push({ partId: part.id, reason: 'not plugged into the board' });
       continue;
     }
-    elements.push(...def.toElements(part, (pinId) => nodeForKey(pinKey(part, pinId, circuit))));
+    elements.push(
+      ...def.toElements(
+        part,
+        (pinId) => nodeForKey(pinKey(part, pinId, circuit)),
+        () => next++,
+      ),
+    );
   }
 
   const pinNode = (partId: string, pinId: string): number => {

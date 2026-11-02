@@ -84,8 +84,8 @@ Everything else follows your outline.
 |---|---|---|---|---|---|
 | 18 | **Binary and logic** — counting in twos, logic levels, gates, truth tables. | 11 | 2 | no | logic gate IC |
 | 19 | **3.3 V vs 5 V and level shifting** — why mixing them breaks things, and the three ways to fix it. | 18 | 2 | **yes** | level shifter |
-| 20 | **What a microcontroller actually is** — GPIO, clock, memory, peripherals, interrupts, timers. | 18 | 2 | no | — |
-| 21 | **First code: blink and a button** — every line explained. **This is where you first touch the ESP32 for real.** | 20, 0a | 3 | **yes** | ESP32 dev board (Lab) |
+| 20 | **What a microcontroller actually is** — GPIO, clock, memory, peripherals, interrupts, timers. *(written — out of order, by request)* | 18 | 2 | no | ESP32 dev board |
+| 21 | **First code: blink and a button** — every line explained. **This is where you first touch the ESP32 for real.** *(written — out of order, by request)* | 20, 0a | 3 | **yes** | ESP32 dev board (Lab) |
 | 22 | **ADC and DAC** — resolution, sampling, noise, and the ESP32's ADC quirks. | 21, 7 | 2.5 | **yes** | — |
 | 23 | **UART, I²C and SPI** — what the wires actually do, not just which library to call. | 21 | 3 | **yes** | I²C sensor, SPI display |
 | 24 | **Sensors and actuators** — temperature, motion, distance, servos, relays, displays. | 23 | 3 | **yes** | sensors, servo, relay module |

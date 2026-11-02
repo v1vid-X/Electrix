@@ -54,6 +54,38 @@ export const PRESETS: Record<string, Preset> = {
       return c;
     },
   },
+  'esp32-blink': {
+    id: 'esp32-blink',
+    goal:
+      'The LED is wired from GPIO13 through a 220 Ω resistor back to GND. Press Run and it blinks. Then change the delay numbers and watch it speed up.',
+    build: () => {
+      const c = emptyCircuit();
+      // Left header lands in column b, right header in column i, straddling the channel.
+      c.parts.push(
+        { id: 'mcu', typeId: 'esp32-devkit', anchor: 'b3', rotation: 0 },
+        { id: 'r1', typeId: 'resistor', anchor: 'g18', rotation: 0, value: 220 },
+        { id: 'led1', typeId: 'led', anchor: 'f24', rotation: 0, color: 'red' },
+      );
+      c.wires.push(
+        // GPIO13 (row 7 of the left header) out to the resistor.
+        { id: 'w1', from: { kind: 'hole', hole: 'a7' }, to: { kind: 'hole', hole: 'h18' }, color: '#d8322a' },
+        // Resistor to the LED's long leg.
+        { id: 'w2', from: { kind: 'hole', hole: 'h21' }, to: { kind: 'hole', hole: 'h24' }, color: '#e8cf3a' },
+        // LED's short leg back to the board's GND.
+        { id: 'w3', from: { kind: 'hole', hole: 'h25' }, to: { kind: 'hole', hole: 'a4' }, color: '#1a1a1a' },
+      );
+      return c;
+    },
+  },
+  'esp32-bare': {
+    id: 'esp32-bare',
+    goal: 'An ESP32 and nothing else. Wire up your own LED, then write the code to blink it.',
+    build: () => {
+      const c = emptyCircuit();
+      c.parts.push({ id: 'mcu', typeId: 'esp32-devkit', anchor: 'b3', rotation: 0 });
+      return c;
+    },
+  },
   'ohms-law': {
     id: 'ohms-law',
     goal: 'Put one resistor across the 9 V battery and check the current with the numbers panel.',

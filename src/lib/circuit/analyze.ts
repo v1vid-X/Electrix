@@ -6,21 +6,12 @@ import { solveDc, type DcSolution } from '../solver/mna';
 import { SingularMatrixError } from '../solver/matrix';
 import { LED_COLORS, partDef } from './parts';
 import { buildNetlist } from './netlist';
-import type { Circuit } from './types';
+import type { Circuit, Diagnostic, Severity } from './types';
 
 /** Current above which we call it a short and stop pretending the source is ideal. */
 export const SHORT_CIRCUIT_AMPS = 1;
 
-export type Severity = 'info' | 'warning' | 'danger';
-
-export interface Diagnostic {
-  severity: Severity;
-  /** Part this is about, if any. */
-  partId?: string;
-  title: string;
-  /** Plain-language explanation, with the arithmetic spelled out. */ 
-  detail: string;
-}
+export type { Diagnostic, Severity };
 
 export interface PartResult {
   partId: string;
@@ -179,6 +170,19 @@ export function analyze(circuit: Circuit): Analysis {
     });
   }
 
+  // Parts that know something about themselves get to say it. This is how the ESP32
+  // reports a pin being asked for more current than the chip can give.
+  for (const part of circuit.parts) {
+    const def = partDef(part.typeId);
+    if (part.burnt || !def.diagnose) continue;
+    diagnostics.push(
+      ...def.diagnose(part, {
+        current: (elementId) => clean(solution.elementCurrents[elementId] ?? 0),
+        voltage: (pinId) => solution.nodeVoltages[pinNode(part.id, pinId)] ?? 0,
+      }),
+    );
+  }
+
   // Burnout and stress explanations, with the arithmetic shown.
   for (const r of Object.values(results)) {
     const part = circuit.parts.find((p) => p.id === r.partId)!;
@@ -235,26 +239,50 @@ export function analyze(circuit: Circuit): Analysis {
   };
 }
 
-/** The "What's happening?" panel: the same arithmetic the lessons teach, in sentences. */
+/** The "What's happening?" panel: the same arithmetic the lessons teach, in sentences.
+ *  Every number here comes from the solved circuit, never from an assumption. */
 function buildStory(
   circuit: Circuit,
   results: Record<string, PartResult>,
   sourceCurrents: Record<string, number>,
 ): string[] {
   const lines: string[] = [];
-  const source = circuit.parts.find((p) => partDef(p.typeId).category === 'power' && !p.burnt);
-  if (!source) {
+  const alive = (p: (typeof circuit.parts)[number]) => !p.burnt;
+  const supply = circuit.parts.filter(alive).find((p) => partDef(p.typeId).category === 'power');
+  const board = circuit.parts.filter(alive).find((p) => partDef(p.typeId).category === 'mcu');
+
+  if (!supply && !board) {
     lines.push('There is no power source in this circuit, so nothing can happen. Nothing is moving.');
     return lines;
   }
 
-  const supply = source.value ?? 0;
-  const total = Math.abs(sourceCurrents[source.id] ?? 0);
-  lines.push(
-    total === 0
-      ? `The ${partDef(source.typeId).name} is holding ${volts(supply)} ready, but no current is flowing anywhere. Nothing forms a complete loop yet.`
-      : `The ${partDef(source.typeId).name} is holding ${volts(supply)} across the circuit and delivering ${amps(total)} in total.`,
-  );
+  if (supply) {
+    const total = Math.abs(sourceCurrents[supply.id] ?? 0);
+    lines.push(
+      total === 0
+        ? `The ${partDef(supply.typeId).name} is holding ${volts(supply.value ?? 0)} ready, but no current is flowing anywhere. Nothing forms a complete loop yet.`
+        : `The ${partDef(supply.typeId).name} is holding ${volts(supply.value ?? 0)} across the circuit and delivering ${amps(total)} in total.`,
+    );
+  }
+
+  if (board) {
+    const driving = Object.entries(board.gpio ?? {}).filter(([, state]) => state === 'high');
+    const lowPins = Object.entries(board.gpio ?? {}).filter(([, state]) => state === 'low');
+    lines.push(
+      `The ESP32 board is powered: it puts ${volts(3.3)} on its 3V3 pin and ${volts(5)} on VIN, both measured from GND.`,
+    );
+    if (driving.length > 0) {
+      lines.push(
+        `Your code has switched ${driving.map(([pin]) => `GPIO${pin}`).join(', ')} ON, so ${driving.length === 1 ? 'that pin is' : 'those pins are'} connected to 3.3 V inside the chip. A pin is a switch, not a battery — it can only supply a limited current.`,
+      );
+    } else if (lowPins.length > 0) {
+      lines.push(
+        `Every pin your code set up is currently OFF, which means connected to 0 V inside the chip. Nothing is being driven.`,
+      );
+    } else {
+      lines.push('No pin has been set up yet. Press Run to start your code.');
+    }
+  }
 
   const led = Object.values(results).find((r) => r.typeId === 'led');
   const resistor = Object.values(results).find((r) => r.typeId === 'resistor');
@@ -263,22 +291,21 @@ function buildStory(
     const part = circuit.parts.find((p) => p.id === resistor.partId)!;
     const r = part.value ?? 0;
     const vLed = Math.abs(led.voltage);
+    const vRes = Math.abs(resistor.voltage);
     lines.push(
-      `The LED drops ${volts(vLed)} — that is fixed by its colour, not by you. ` +
-        `That leaves ${volts(supply - vLed)} for the resistor.`,
+      `The LED drops ${volts(vLed)} — that is fixed by its colour, not by you. The resistor takes ${volts(vRes)}.`,
     );
     lines.push(
-      `So the current is (${trim(supply)} V − ${trim(vLed)} V) ÷ ${ohms(r)} = ${amps(Math.abs(resistor.current))}, ` +
-        'and the same current goes through every part in the loop.',
+      `So the current is ${trim(vRes)} V ÷ ${ohms(r)} = ${amps(Math.abs(resistor.current))}, and the same current flows through every part in the loop.`,
     );
     lines.push(
       `The resistor turns ${watts(resistor.power)} into heat; the LED turns ${watts(led.power)} into light and heat.`,
     );
   } else if (led && Math.abs(led.current) <= 1e-7) {
     lines.push(
-      'No current is reaching the LED. Either the loop is not closed, or the LED is in backwards — it only conducts one way.',
+      'No current is reaching the LED. Either the loop is not closed, the pin driving it is off, or the LED is in backwards — it only conducts one way.',
     );
-  } else if (resistor) {
+  } else if (resistor && Math.abs(resistor.current) > 1e-7) {
     const part = circuit.parts.find((p) => p.id === resistor.partId)!;
     lines.push(
       `The resistor has ${volts(Math.abs(resistor.voltage))} across it, so ${trim(Math.abs(resistor.voltage))} V ÷ ${ohms(part.value ?? 0)} = ${amps(Math.abs(resistor.current))} flows through it.`,

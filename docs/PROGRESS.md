@@ -2,7 +2,7 @@
 
 Keep this current. Any future session should be able to pick up from this file alone.
 
-Last updated: 2026-11-02 — end of the first build (addendum first steps 1–6).
+Last updated: 2026-11-02 — ESP32 in the Lab, plus modules 20 and 21.
 
 ---
 
@@ -72,7 +72,37 @@ Last updated: 2026-11-02 — end of the first build (addendum first steps 1–6)
 - Verified by launching the real Electron app under Xvfb: home, lesson (33 KaTeX nodes, both
   widgets) and the Lab (3D canvas, lazy chunk) all render off disk.
 
-### Tests — 112 passing
+### The ESP32 in the Lab (built out of order, by request)
+- `src/lib/esp32/pins.ts` — the board's electrical model. Logic thresholds, output levels and
+  drive currents come from the ESP32 datasheet DC characteristics table; everything that
+  could not be verified is **excluded rather than guessed** (GPIO34–39, INPUT_PULLUP, any
+  specific product's physical header order) and is listed in `docs/open-questions.md`.
+- `src/lib/esp32/arduino.ts` — transpiles a documented subset of Arduino C++ to JavaScript.
+  Anything it cannot honestly simulate (analogRead, PWM, INPUT_PULLUP, libraries,
+  interrupts) is rejected with an explanation rather than silently behaving differently.
+- `src/lib/esp32/runtime.ts` — runs the sketch. Drives pins, reads them back through the
+  solver, catches runaway loops, refuses the flash pins, warns about strapping pins and about
+  floating inputs. No React or three.js in it.
+- A GPIO output is modelled as 3.3 V behind ~16.5 Ω, derived from the datasheet's VOH and IOH
+  figures, so a pin sags under load exactly as real hardware does — and the Lab warns when a
+  pin is pushed past its rated drive current, which is the real hazard rather than the LED.
+- `PartDef` gained `newNode()` (parts with internal structure), `groundPin` and a `diagnose`
+  hook, so the board's knowledge stays entirely inside the part registry.
+- 3D board mesh with silkscreen pin labels, a code editor and a serial monitor in the Lab,
+  and two presets (`esp32-blink`, `esp32-bare`).
+- Verified end to end in a real browser: the LED blinks, and the panel reads
+  *"The LED drops 1.74 V … the resistor takes 1.45 V. So the current is 1.45 V ÷ 220 Ω =
+  6.59 mA."*
+
+### Lesson content, continued
+- `curriculum/20-what-a-microcontroller-is.md` — what a microcontroller is, the five parts
+  that matter, and why a GPIO pin is not a power supply.
+- `curriculum/21-first-code.md` — blink, line by line, plus reading a button, pull-down
+  resistors, floating inputs and a debugging order.
+- Both open with a "you are jumping ahead" callout naming the modules they lean on that are
+  not written yet.
+
+### Tests — 157 passing
 `npm test`. Covers: Ohm's law and the power law, series/parallel, voltage dividers, LED
 resistor sizing, RC time constants, battery life, engineering-notation formatting, SM-2
 scheduling, front-matter parsing and table-of-contents generation (including duplicate
@@ -80,7 +110,10 @@ headings), quiz grading and the unit-slip detector, breadboard connectivity (cen
 split rails), board geometry and snapping, resistor colour codes, the linear solver, the MNA
 solver against textbook circuits (series, parallel, bridge, current source, capacitor at DC),
 the LED model against its datasheet point, and whole-circuit analysis including burnout,
-reverse LEDs, the centre-gap trap and the split-rail trap.
+reverse LEDs, the centre-gap trap and the split-rail trap. Plus the Arduino transpiler and
+its loop guards, the sketch runtime (blinking over time, floating inputs, refused pins,
+runaway loops, Serial, millis), and the ESP32 driving a real circuit (pin sag under load,
+GPIO overcurrent warning, and the blink preset's wiring).
 
 ---
 
@@ -122,7 +155,6 @@ Roughly in the order the addendum asks for.
   the solver stamps capacitors as open circuits at DC today and says so in a comment.
 - Capacitors, switches, buttons, potentiometers as placeable parts.
 - Transistors, MOSFETs, diodes, relays, motors.
-- The ESP32 board, the code editor and simulated GPIO.
 - Challenges mode with automatic goal checking, hints, and broken-circuit puzzles.
 - Current-flow and voltage-colour visualisation layers.
 - Part locking by module progress (the registry already carries `unlockModule`).
@@ -142,8 +174,13 @@ Roughly in the order the addendum asks for.
   I²C/SPI/UART waveforms, resistor colour decoder.
 - "Build it" pages for hands-on modules (parts list, wiring, expected result, debug order).
 
+**ESP32, still missing**
+- A push button part, so module 21's button section can be built rather than faked with a wire.
+- `analogRead`, PWM / `analogWrite`, and `INPUT_PULLUP` — all blocked on datasheet figures.
+- Uploading to real hardware. The Lab simulates; it does not flash a board.
+
 **Curriculum**
-- Modules 0a, 0b, 0c and 2 onwards. Module 1 is the template to copy.
+- Modules 0a, 0b, 0c, 2–19 and 22 onwards. Module 1 is the template to copy.
 
 ---
 
@@ -173,6 +210,10 @@ Roughly in the order the addendum asks for.
 - **Smoke is positioned at the part's anchor hole**, not at the centre of the part body, so it
   can look slightly offset on a resistor.
 - **Only tested in Chromium** (headless, via Playwright). Not checked in Firefox or Safari.
+- **espressif.com is blocked** by this cloud session's network policy, which is why four
+  ESP32 facts remain unverified. See `docs/open-questions.md` for the two ways to close them.
+- **The Arduino subset is a regex transpiler, not a parser.** It handles the sketches these
+  lessons teach; unusual formatting may confuse it. Loop bodies must use braces.
 - **Touch input in the Lab is untested.** Orbit controls support it, the placing and wiring
   interactions have not been tried on a tablet.
 

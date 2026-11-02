@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { CatmullRomCurve3, Vector3 } from 'three';
 import { BOARD_HEIGHT, holePosition } from '../../lib/circuit/coords';
 import { bandsFor } from '../../lib/colorCode';
+import { makeEsp32Texture } from './esp32Texture';
+import { LEFT_PINS } from '../../lib/esp32/pins';
 import { LED_COLORS, partDef } from '../../lib/circuit/parts';
 import { pinHole } from '../../lib/circuit/netlist';
 import type { PartInstance } from '../../lib/circuit/types';
@@ -146,8 +148,64 @@ export function SourceMesh({ part }: { part: PartInstance }) {
   );
 }
 
+/** The dev board: a PCB straddling the centre channel, with headers down both sides. */
+export function Esp32Mesh({ part }: { part: PartInstance }) {
+  const first = pinHole(part, LEFT_PINS[0].id);
+  const last = pinHole(part, LEFT_PINS[LEFT_PINS.length - 1].id);
+  const right = pinHole(part, 'VIN');
+  const pa = first ? holePosition(first) : null;
+  const pb = last ? holePosition(last) : null;
+  const pr = right ? holePosition(right) : null;
+
+  const widthMm = pa && pr ? Math.abs(pr.x - pa.x) + 4.5 : 27;
+  const lengthMm = pa && pb ? Math.abs(pb.z - pa.z) + 5 : 35;
+  const texture = useMemo(() => makeEsp32Texture(widthMm, lengthMm), [widthMm, lengthMm]);
+
+  if (!pa || !pb || !pr) return null;
+  const cx = (pa.x + pr.x) / 2;
+  const cz = (pa.z + pb.z) / 2;
+  const pcbY = TOP + 7;
+
+  return (
+    <group>
+      <mesh position={[cx, pcbY, cz]} castShadow receiveShadow>
+        <boxGeometry args={[widthMm, 1.6, lengthMm]} />
+        <meshStandardMaterial color="#1b2d44" roughness={0.6} />
+      </mesh>
+      <mesh position={[cx, pcbY + 0.81, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[widthMm, lengthMm]} />
+        <meshStandardMaterial map={texture} roughness={0.55} />
+      </mesh>
+      {/* The metal can of the radio module, standing proud of the PCB. */}
+      <mesh position={[cx, pcbY + 1.6, cz - lengthMm * 0.18]} castShadow>
+        <boxGeometry args={[widthMm * 0.62, 1.4, lengthMm * 0.4]} />
+        <meshStandardMaterial color="#b9bec4" roughness={0.35} metalness={0.8} />
+      </mesh>
+      {/* USB socket. */}
+      <mesh position={[cx, pcbY + 1.3, cz + lengthMm / 2 - 1]} castShadow>
+        <boxGeometry args={[8, 3, 6]} />
+        <meshStandardMaterial color="#c9ced3" roughness={0.3} metalness={0.85} />
+      </mesh>
+      {/* Header strips and the legs going into the board. */}
+      {[pa.x, pr.x].map((x) => (
+        <mesh key={x} position={[x, TOP + 3.2, cz]} castShadow>
+          <boxGeometry args={[2.4, 6, lengthMm - 4]} />
+          <meshStandardMaterial color="#17191a" roughness={0.8} />
+        </mesh>
+      ))}
+      {LEFT_PINS.map((_, i) => {
+        const z = pa.z + (pb.z - pa.z) * (i / (LEFT_PINS.length - 1));
+        return [pa.x, pr.x].map((x) => (
+          <Leg key={`${x}-${i}`} from={[x, TOP + 0.4, z]} to={[x, TOP - 1, z]} />
+        ));
+      })}
+    </group>
+  );
+}
+
 export function PartMesh({ part, result }: { part: PartInstance; result?: PartResult }) {
   const def = partDef(part.typeId);
+  if (part.typeId === 'esp32-devkit') return <Esp32Mesh part={part} />;
   if (def.category === 'power') return <SourceMesh part={part} />;
   if (part.typeId === 'led') return <LedMesh part={part} result={result} />;
   if (part.typeId === 'resistor') return <ResistorMesh part={part} />;

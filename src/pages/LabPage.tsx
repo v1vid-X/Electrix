@@ -10,6 +10,10 @@ import { emptyCircuit, type Circuit, type Terminal } from '../lib/circuit/types'
 import type { HoleId } from '../lib/circuit/board';
 import { amps, ohms as fmtOhms, volts } from '../lib/format';
 import { presetOrDefault } from '../components/lab/presets';
+import { CodePanel, type ConsoleLine } from '../components/lab/CodePanel';
+import { findBoard, gpioVolts, withGpio } from '../components/lab/sketchHost';
+import { Sketch, type GpioState, type SketchHost } from '../lib/esp32/runtime';
+import { DEFAULT_SKETCH } from '../components/lab/sketches';
 
 type Tool = { kind: 'select' } | { kind: 'place'; typeId: string } | { kind: 'wire' };
 
@@ -49,6 +53,23 @@ export function LabPage() {
   const [smoke, setSmoke] = useState<{ partId: string; startedAt: number }[]>([]);
   const nextId = useRef(1);
 
+  // --- the ESP32 sketch ---------------------------------------------------------------
+  const [code, setCode] = useState(() => localStorage.getItem('circuit-brain/lab/sketch') ?? DEFAULT_SKETCH);
+  const [consoleLines, setConsoleLines] = useState<ConsoleLine[]>([]);
+  const [running, setRunning] = useState(false);
+  // Pin state lives outside React so the sketch can read and write it synchronously.
+  const gpioRef = useRef<Record<string, GpioState>>({});
+  const circuitRef = useRef(circuit);
+  const [gpioVersion, setGpioVersion] = useState(0);
+  const flushQueued = useRef(false);
+  const seenWarnings = useRef(new Set<string>());
+  const sketchRef = useRef<Sketch | null>(null);
+  circuitRef.current = circuit;
+
+  const log = useCallback((line: ConsoleLine) => {
+    setConsoleLines((c) => [...c.slice(-199), line]);
+  }, []);
+
   // Commit a change and remember the previous state for undo.
   const apply = useCallback((fn: (c: Circuit) => Circuit) => {
     setCircuit((current) => {
@@ -58,9 +79,24 @@ export function LabPage() {
     });
   }, []);
 
+  const simCircuit = useMemo(
+    () => withGpio(circuit, gpioRef.current),
+    // gpioVersion is the signal that the sketch changed a pin.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [circuit, gpioVersion],
+  );
+
   const analysis = useMemo(
-    () => (powered ? analyze(circuit) : analyze({ ...circuit, parts: circuit.parts.filter((p) => p.typeId !== 'usb-5v' && p.typeId !== 'battery-9v') })),
-    [circuit, powered],
+    () =>
+      powered
+        ? analyze(simCircuit)
+        : analyze({
+            ...simCircuit,
+            parts: simCircuit.parts.filter(
+              (p) => p.typeId !== 'usb-5v' && p.typeId !== 'battery-9v' && p.typeId !== 'esp32-devkit',
+            ),
+          }),
+    [simCircuit, powered],
   );
 
   // Burnt is permanent: write it back into the circuit and puff some smoke.
@@ -89,6 +125,67 @@ export function LabPage() {
       // Private browsing: the bench just will not survive a reload.
     }
   }, [circuit]);
+
+  const host = useMemo<SketchHost>(
+    () => ({
+      setPin: (gpio, state) => {
+        if (gpioRef.current[String(gpio)] === state) return;
+        gpioRef.current = { ...gpioRef.current, [String(gpio)]: state };
+        // Re-render at most once per frame, however fast the sketch toggles pins.
+        if (!flushQueued.current) {
+          flushQueued.current = true;
+          requestAnimationFrame(() => {
+            flushQueued.current = false;
+            setGpioVersion((v) => v + 1);
+          });
+        }
+      },
+      readVolts: (gpio) => gpioVolts(circuitRef.current, gpioRef.current, gpio),
+      print: (text) => log({ kind: 'serial', text: text.replace(/\n$/, '') }),
+      warn: (text) => {
+        // The same warning every loop would bury everything else.
+        if (seenWarnings.current.has(text)) return;
+        seenWarnings.current.add(text);
+        log({ kind: 'warn', text });
+      },
+      fail: (text) => {
+        log({ kind: 'error', text });
+        setRunning(false);
+      },
+    }),
+    [log],
+  );
+
+  const runSketch = useCallback(() => {
+    if (!findBoard(circuitRef.current)) {
+      log({ kind: 'error', text: 'There is no ESP32 board on the bench. Add one from the parts panel first.' });
+      return;
+    }
+    seenWarnings.current.clear();
+    setConsoleLines([]);
+    sketchRef.current ??= new Sketch(host);
+    const errors = sketchRef.current.start(code);
+    if (errors.length > 0) {
+      errors.forEach((text) => log({ kind: 'error', text }));
+      setRunning(false);
+      return;
+    }
+    log({ kind: 'info', text: 'Running.' });
+    setRunning(true);
+  }, [code, host, log]);
+
+  const stopSketch = useCallback(() => {
+    sketchRef.current?.stop();
+    setRunning(false);
+    setGpioVersion((v) => v + 1);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('circuit-brain/lab/sketch', code);
+  }, [code]);
+
+  // Stop the sketch when the page goes away, so no timer keeps firing.
+  useEffect(() => () => sketchRef.current?.stop(), []);
 
   const undo = useCallback(() => {
     setHistory((h) => {
@@ -208,6 +305,7 @@ export function LabPage() {
   };
 
   const selected = circuit.parts.find((p) => p.id === selectedPartId);
+  const hasBoard = Boolean(findBoard(circuit));
   const available = partList().filter((p) => p.typeId !== 'wire-link');
 
   return (
@@ -382,7 +480,7 @@ export function LabPage() {
                     </div>
                   ))}
                   <p className="mt-2 border-t border-line pt-2 font-sans text-[11.5px] leading-[1.5] text-ink-3">
-                    Transistors, capacitors, switches and the ESP32 arrive with their modules.
+                    Transistors, capacitors and switches arrive with their modules.
                   </p>
                 </div>
               )}
@@ -392,8 +490,21 @@ export function LabPage() {
           <div className="flex-1" />
 
           {/* What's happening + diagnostics */}
-          <div className="pointer-events-auto hidden max-h-full w-[320px] flex-col gap-3 p-3 pt-0 lg:flex">
-            <Panel className="overflow-y-auto">
+          <div className="pointer-events-auto hidden max-h-full w-[348px] flex-col gap-3 p-3 pt-0 lg:flex">
+            {hasBoard && (
+              <Panel className="flex min-h-[420px] flex-[3] flex-col overflow-hidden">
+                <CodePanel
+                  code={code}
+                  onChange={setCode}
+                  running={running}
+                  onRun={runSketch}
+                  onStop={stopSketch}
+                  lines={consoleLines}
+                  onClear={() => setConsoleLines([])}
+                />
+              </Panel>
+            )}
+            <Panel className="max-h-[42%] flex-[2] overflow-y-auto">
               <div className="border-b border-line px-3 py-2.5">
                 <span className="font-sans text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-2">
                   What&apos;s happening?
@@ -472,16 +583,33 @@ export function LabPage() {
         {/* Bottom bar */}
         <div className="pointer-events-auto flex flex-wrap items-center gap-2 p-3">
           <Panel className="flex items-center gap-3 px-3 py-2">
-            <Button size="sm" variant={powered ? 'primary' : 'secondary'} onClick={() => setPowered((p) => !p)}>
+            <Button
+              size="sm"
+              variant={powered ? 'primary' : 'secondary'}
+              onClick={() => {
+                if (powered) stopSketch();
+                setPowered((p) => !p);
+              }}
+            >
               {powered ? 'Power on' : 'Power off'}
             </Button>
             <span className="font-mono text-[12.5px] tabular-nums text-ink-2">
               {(() => {
                 const src = circuit.parts.find((p) => p.typeId === 'usb-5v' || p.typeId === 'battery-9v');
-                const current = src ? analysis.sourceCurrents[src.id] : undefined;
-                return src
-                  ? `${volts(src.value ?? 0)} · ${current !== undefined ? amps(Math.abs(current)) : '— A'}`
-                  : 'no supply on the bench';
+                if (src) {
+                  const current = analysis.sourceCurrents[src.id];
+                  return `${volts(src.value ?? 0)} · ${current !== undefined ? amps(Math.abs(current)) : '— A'}`;
+                }
+                const board = findBoard(simCircuit);
+                if (!board) return 'no supply on the bench';
+                // Total current the board's pins are delivering right now.
+                const pinCurrent = Object.entries(analysis.sourceCurrents)
+                  .filter(([id]) => id.startsWith(`${board.id}:gpio`))
+                  .reduce((sum, [, a]) => sum + Math.abs(a), 0);
+                const on = Object.entries(board.gpio ?? {})
+                  .filter(([, state]) => state === 'high')
+                  .map(([pin]) => `IO${pin}`);
+                return `3.3 V · ${amps(pinCurrent)} · ${on.length > 0 ? `${on.join(' ')} HIGH` : 'all pins off'}`;
               })()}
             </span>
           </Panel>

@@ -23,6 +23,9 @@ export interface PartInstance {
   burnt?: boolean;
   /** Buttons and switches. */
   closed?: boolean;
+  /** For a microcontroller: what each GPIO is currently doing. Written by the sketch
+   *  runtime, read by the netlist builder. Keyed by GPIO number. */
+  gpio?: Record<string, 'input' | 'high' | 'low'>;
 }
 
 export interface WireInstance {
@@ -43,6 +46,17 @@ export const emptyCircuit = (board: BoardConfig = { splitRails: false }): Circui
   parts: [],
   wires: [],
 });
+
+export type Severity = 'info' | 'warning' | 'danger';
+
+export interface Diagnostic {
+  severity: Severity;
+  /** Part this is about, if any. */
+  partId?: string;
+  title: string;
+  /** Plain-language explanation, with the arithmetic spelled out. */
+  detail: string;
+}
 
 export const terminalKey = (t: Terminal): string =>
   t.kind === 'hole' ? `hole:${t.hole}` : `pin:${t.partId}:${t.pinId}`;

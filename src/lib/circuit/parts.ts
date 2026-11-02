@@ -4,7 +4,17 @@
 
 import type { Element } from '../solver/mna';
 import { saturationCurrentFor } from '../solver/mna';
-import type { PartInstance } from './types';
+import {
+  ALL_PINS,
+  I_OH,
+  I_OL,
+  LEFT_PINS,
+  RIGHT_PINS,
+  R_PIN_HIGH,
+  R_PIN_LOW,
+  VDD,
+} from '../esp32/pins';
+import type { Diagnostic, PartInstance } from './types';
 
 export interface PinDef {
   id: string;
@@ -26,7 +36,7 @@ export interface PartLimits {
 export interface PartDef {
   typeId: string;
   name: string;
-  category: 'power' | 'passive' | 'semiconductor' | 'input' | 'instrument';
+  category: 'power' | 'passive' | 'semiconductor' | 'input' | 'instrument' | 'mcu';
   /** One line for the hover tooltip. Plain language, no jargon. */
   summary: string;
   /** Module number that unlocks this part in the Lab. */
@@ -38,8 +48,24 @@ export interface PartDef {
   /** Values offered in the inspector, in SI base units. */
   valueOptions?: readonly number[];
   limits?: PartLimits;
-  /** Turns an instance into solver elements. `node` resolves one of this part's pins. */
-  toElements: (part: PartInstance, node: (pinId: string) => number) => Element[];
+  /** The pin that defines 0 V for the whole circuit, if this part provides one. */
+  groundPin?: string;
+  /** Turns an instance into solver elements. `node` resolves one of this part's pins;
+   *  `newNode` mints a private node, for parts with internal structure. */
+  toElements: (
+    part: PartInstance,
+    node: (pinId: string) => number,
+    newNode: () => number,
+  ) => Element[];
+  /** Anything this part alone can tell the learner about the solved circuit. */
+  diagnose?: (part: PartInstance, ctx: PartContext) => Diagnostic[];
+}
+
+export interface PartContext {
+  /** Current through one of this part's own solver elements, A. */
+  current: (elementId: string) => number;
+  /** Voltage at one of this part's pins, V. */
+  voltage: (pinId: string) => number;
 }
 
 /** Forward voltage at 20 mA for common 5 mm LEDs, plus the bulk resistance that stops
@@ -69,6 +95,7 @@ const PART_LIST: readonly PartDef[] = [
     onBoard: false,
     defaultValue: 9,
     valueOptions: [1.5, 3, 4.5, 9],
+    groundPin: 'neg',
     pins: [
       { id: 'pos', label: '+', dCol: 0, dRow: 0 },
       { id: 'neg', label: '−', dCol: 0, dRow: 1 },
@@ -92,6 +119,7 @@ const PART_LIST: readonly PartDef[] = [
     onBoard: false,
     defaultValue: 5,
     valueOptions: [3.3, 5],
+    groundPin: 'neg',
     pins: [
       { id: 'pos', label: '5V', dCol: 0, dRow: 0 },
       { id: 'neg', label: 'GND', dCol: 0, dRow: 1 },
@@ -143,6 +171,82 @@ const PART_LIST: readonly PartDef[] = [
           rs: spec.rs,
         },
       ];
+    },
+  },
+  {
+    typeId: 'esp32-devkit',
+    name: 'ESP32 dev board',
+    category: 'mcu',
+    summary:
+      'A microcontroller board: a tiny computer you program. Its pins can be switched on and off by code.',
+    unlockModule: 21,
+    onBoard: true,
+    groundPin: 'GND1',
+    // Twelve pins down each side, straddling the breadboard's centre channel exactly as a
+    // real dev board does. See src/lib/esp32/pins.ts for what is verified and what is not.
+    pins: [
+      ...LEFT_PINS.map((pin, i) => ({ id: pin.id, label: pin.id, dCol: 0, dRow: i })),
+      ...RIGHT_PINS.map((pin, i) => ({ id: pin.id, label: pin.id, dCol: 7, dRow: i })),
+    ],
+    toElements: (part, node, newNode) => {
+      const ground = node('GND1');
+      const elements: Element[] = [
+        // The two ground pins are the same point inside the board.
+        { kind: 'resistor', id: `${part.id}:gndlink`, a: ground, b: node('GND2'), ohms: 0.001 },
+        // The on-board regulator, and the 5 V coming straight from USB.
+        { kind: 'vsource', id: `${part.id}:3v3`, pos: node('3V3'), neg: ground, volts: VDD },
+        { kind: 'vsource', id: `${part.id}:vin`, pos: node('VIN'), neg: ground, volts: 5 },
+      ];
+
+      for (const pin of ALL_PINS) {
+        if (pin.gpio === undefined) continue;
+        const state = part.gpio?.[String(pin.gpio)] ?? 'input';
+        // An input is high-impedance: it drives nothing at all, so it adds no elements.
+        if (state !== 'high' && state !== 'low') continue;
+        // A real output is not a perfect voltage source. Modelling its resistance is what
+        // makes "LED straight on a GPIO pin" behave the way it does on real hardware.
+        const inner = newNode();
+        elements.push(
+          {
+            kind: 'vsource',
+            id: `${part.id}:gpio${pin.gpio}`,
+            pos: inner,
+            neg: ground,
+            volts: state === 'high' ? VDD : 0,
+          },
+          {
+            kind: 'resistor',
+            id: `${part.id}:gpio${pin.gpio}r`,
+            a: inner,
+            b: node(pin.id),
+            ohms: state === 'high' ? R_PIN_HIGH : R_PIN_LOW,
+          },
+        );
+      }
+      return elements;
+    },
+    diagnose: (part, ctx) => {
+      const out: Diagnostic[] = [];
+      for (const pin of ALL_PINS) {
+        if (pin.gpio === undefined) continue;
+        const state = part.gpio?.[String(pin.gpio)];
+        if (state !== 'high' && state !== 'low') continue;
+        const amps = Math.abs(ctx.current(`${part.id}:gpio${pin.gpio}r`));
+        const limit = state === 'high' ? I_OH : I_OL;
+        if (amps <= limit) continue;
+        out.push({
+          severity: 'danger',
+          partId: part.id,
+          title: `GPIO${pin.gpio} is being asked for more current than the chip can give`,
+          detail:
+            `${(amps * 1000).toFixed(0)} mA is flowing through GPIO${pin.gpio}, and an ESP32 pin ` +
+            `is only built for about ${(limit * 1000).toFixed(0)} mA. The pin is not a power ` +
+            'supply: it is a tiny switch inside the chip. Overloading it damages the ESP32 ' +
+            'itself, which is far more expensive than the part you were trying to drive. ' +
+            'Add a bigger series resistor, or switch the load with a transistor instead.',
+        });
+      }
+      return out;
     },
   },
   {
