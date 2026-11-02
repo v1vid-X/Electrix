@@ -5,16 +5,20 @@ and debugging your own ESP32 boards. Lessons with live widgets, quizzes and spac
 flashcards, plus **the Lab**: a 3D breadboard with a real circuit simulator behind it, where
 components light up, get hot, and burn out with an explanation of exactly why.
 
-## Just want to use it (Windows)
+## Download it (Windows)
 
-Download the installer — no Node.js, no terminal, nothing to set up:
+**→ [Latest release](../../releases/latest)** — grab `CircuitBrain-Setup-x.y.z.exe` and run it.
 
-1. Go to the repository's **Actions** tab → the latest **Windows app** run.
-2. Scroll to **Artifacts** → download **CircuitBrain-Windows-Setup**.
-3. Unzip it and run `CircuitBrain-Setup-x.y.z.exe`.
-4. Windows will say *"Windows protected your PC"*, because the installer is not code-signed
-   (signing certificates cost a few hundred euro a year). Click **More info** →
-   **Run anyway**.
+No Node.js, no terminal, nothing to set up.
+
+Windows will say *"Windows protected your PC"*, because the installer is not code-signed
+(a certificate costs a few hundred euro a year). Either:
+
+- click **More info** → **Run anyway**, or
+- right-click the downloaded file → **Properties** → tick **Unblock** → **OK**, then run it.
+
+Every push also builds an installer you can grab from the **Actions** tab under
+**Artifacts**, if you want a build newer than the last release.
 
 It installs for the current user, adds a desktop shortcut, and runs fully offline apart from
 loading its three web fonts.

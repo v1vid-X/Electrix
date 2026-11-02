@@ -39,6 +39,15 @@ jobs:
 
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release create "${{ github.ref_name }}" release/*.exe --generate-notes
+        # bash, because PowerShell does not expand release/*.exe for gh.
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la release/*.exe
+          gh release create "${{ github.ref_name }}" release/*.exe \
+            --title "Circuit Brain ${{ github.ref_name }}" \
+            --notes "Windows installer. Unsigned, so Windows SmartScreen will warn on first run: click More info, then Run anyway. Or right-click the downloaded file, Properties, tick Unblock, OK.
+
+          Install it and open it like any other program. No Node.js or terminal needed."
         env:
           GH_TOKEN: ${{ github.token }}
