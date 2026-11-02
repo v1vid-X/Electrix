@@ -1,4 +1,6 @@
 import { Canvas } from '@react-three/fiber';
+import { ACESFilmicToneMapping, PCFSoftShadowMap } from 'three';
+import { Studio } from './Studio';
 import { ContactShadows, OrbitControls } from '@react-three/drei';
 import { Vector3 } from 'three';
 import { Suspense } from 'react';
@@ -44,22 +46,40 @@ export function LabScene(props: SceneProps) {
       dpr={quality === 'high' ? [1, 1.75] : quality === 'medium' ? [1, 1.25] : 1}
       camera={{ position: [118, 92, 78], fov: 32, near: 1, far: 2000 }}
       gl={{ antialias: quality !== 'low' }}
+      onCreated={({ gl: renderer }) => {
+        // Filmic response: highlights roll off instead of clipping to white, which is most
+        // of what separates a render that looks photographed from one that looks plastic.
+        renderer.toneMapping = ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 0.95;
+        if (quality === 'high') renderer.shadowMap.type = PCFSoftShadowMap;
+      }}
     >
       <color attach="background" args={['#0c0e0d']} />
-      <fog attach="fog" args={['#0c0e0d', 260, 620]} />
+      <fog attach="fog" args={['#0c0e0d', 300, 700]} />
 
-      <ambientLight intensity={0.5} />
+      {/* Reflections and ambient light for every surface, generated in code.
+          This replaces the fill and bounce lights rather than adding to them: one key light
+          plus image-based lighting is both more convincing and cheaper than three lights. */}
+      {/* Kept deliberately dim. The environment is here for reflections and a little bounce,
+          not to light the scene: a bright studio would wash out the dark workbench the rest
+          of the app is designed around. */}
+      {quality !== 'low' && <Studio intensity={0.32} />}
+
+      <ambientLight intensity={quality === 'low' ? 1.1 : 0.18} />
       <directionalLight
         position={[70, 130, 60]}
-        intensity={1.5}
+        intensity={quality === 'low' ? 1.5 : 1.7}
         castShadow={quality !== 'low'}
         shadow-mapSize={quality === 'high' ? [2048, 2048] : [1024, 1024]}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.35}
         shadow-camera-left={-120}
         shadow-camera-right={120}
         shadow-camera-top={120}
         shadow-camera-bottom={-120}
       />
-      <directionalLight position={[-90, 70, -50]} intensity={0.35} color="#9fb6c9" />
+      {/* Cool fill, so shadowed faces are readable without being lit from nowhere. */}
+      <directionalLight position={[-90, 70, -50]} intensity={0.45} color="#9fb6c9" />
 
       {/* Desk */}
       <mesh
@@ -72,14 +92,16 @@ export function LabScene(props: SceneProps) {
         }}
       >
         <planeGeometry args={[900, 900]} />
-        <meshStandardMaterial color="#1a1c1b" roughness={0.95} />
+        {/* A dark rubber mat: almost no specular, so the parts are what catches the light. */}
+        {/* The desk stays dark: it must not pick up the studio reflection. */}
+        <meshStandardMaterial color="#17191a" roughness={0.96} envMapIntensity={0.12} />
       </mesh>
       {quality !== 'low' && (
         <ContactShadows position={[0, 0.02, 0]} opacity={0.5} scale={240} blur={2.4} far={40} />
       )}
 
       <Suspense fallback={null}>
-        <Breadboard onHoverHole={props.onHoverHole} onClickHole={props.onClickHole} />
+        <Breadboard onHoverHole={props.onHoverHole} onClickHole={props.onClickHole} detail={quality} />
 
         {props.circuit.parts.map((part) => {
           const def = partDef(part.typeId);
@@ -105,7 +127,7 @@ export function LabScene(props: SceneProps) {
                   : undefined
               }
             >
-              <PartMesh part={part} result={props.analysis.results[part.id]} />
+              <PartMesh part={part} result={props.analysis.results[part.id]} detail={quality} />
             </group>
           );
         })}

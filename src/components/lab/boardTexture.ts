@@ -8,7 +8,14 @@ import { holePosition } from '../../lib/circuit/coords';
 
 const PX_PER_MM = 26;
 
-export function makeBoardTexture(): CanvasTexture {
+export interface BoardMaps {
+  /** What the board looks like. */
+  color: CanvasTexture;
+  /** Height, so the holes and the centre channel read as real recesses rather than paint. */
+  bump: CanvasTexture;
+}
+
+export function makeBoardTexture(): BoardMaps {
   const w = Math.round(BOARD_WIDTH * PX_PER_MM);
   const h = Math.round(BOARD_LENGTH * PX_PER_MM);
   const canvas = document.createElement('canvas');
@@ -97,5 +104,36 @@ export function makeBoardTexture(): CanvasTexture {
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   texture.anisotropy = 16;
-  return texture;
+
+  // Height map: white is the surface, black is cut into it.
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = w;
+  bumpCanvas.height = h;
+  const bctx = bumpCanvas.getContext('2d')!;
+  bctx.fillStyle = '#ffffff';
+  bctx.fillRect(0, 0, w, h);
+
+  // The moulded channel down the middle.
+  bctx.fillStyle = '#9a9a9a';
+  bctx.fillRect(w / 2 - channelHalf, 0, channelHalf * 2, h);
+
+  // Each hole, with a soft edge so the shading rolls off instead of stepping.
+  for (const hole of allHoles()) {
+    const px = toPx(hole.x);
+    const py = toPy(hole.z);
+    const s = 1.0 * PX_PER_MM;
+    const g = bctx.createRadialGradient(px, py, 0, px, py, s);
+    g.addColorStop(0, '#000000');
+    g.addColorStop(0.62, '#101010');
+    g.addColorStop(1, '#ffffff');
+    bctx.fillStyle = g;
+    bctx.beginPath();
+    bctx.arc(px, py, s, 0, Math.PI * 2);
+    bctx.fill();
+  }
+
+  const bump = new CanvasTexture(bumpCanvas);
+  bump.anisotropy = 8;
+
+  return { color: texture, bump };
 }

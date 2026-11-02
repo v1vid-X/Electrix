@@ -138,6 +138,38 @@ for headings, paragraph spacing 1em. Headings get `letter-spacing: -0.015em`.
   Every diagram must be readable at 320px wide and must work in both themes (so: no baked-in
   white backgrounds, use `currentColor` where possible).
 
+## 6b. The Lab's rendering
+
+The 3D scene is lit the way a product photograph is, not the way a tech demo is:
+
+- **Filmic tone mapping** (ACES) with exposure just under 1, so highlights roll off instead
+  of clipping to white.
+- **Image-based lighting**, generated in code from three's own room scene — no HDR file to
+  download, which matters because the desktop app runs offline. Kept deliberately dim
+  (`environmentIntensity` 0.32): it is there for reflections and a little bounce, not to
+  light the scene. A bright studio washes out the dark workbench the rest of the app is
+  designed around, which is exactly what happened on the first attempt.
+- **One key light** with a soft shadow, plus a cool fill. The desk is given a low
+  `envMapIntensity` so it stays near-black.
+- **Nothing is uniformly glossy.** A shared tiling noise texture varies roughness across the
+  breadboard and the resistor bodies. Perfectly even roughness is the single most obvious
+  "this is CG" tell.
+- **Geometry follows the data.** Bodies and leads are built between the part's real pin
+  positions with a quaternion, never with a guessed Euler angle.
+
+Quality tiers, because reflections and surface relief are close to free on a GPU and very
+expensive without one:
+
+| | reflections | surface relief | shadows | lens |
+|---|---|---|---|---|
+| high | yes | yes | soft | translucent, internals visible |
+| medium | yes | no | hard | translucent |
+| low | no | no | none | opaque, low-poly |
+
+The Lab measures its own frame rate for the first couple of seconds and steps the quality
+down if the machine cannot keep up. It only ever goes down, and it stops interfering the
+moment the learner picks a level themselves.
+
 ## 7. Layout
 
 - Lesson page: left ToC rail (sticky, 240px, hidden < 1024px), centre column 68ch, right

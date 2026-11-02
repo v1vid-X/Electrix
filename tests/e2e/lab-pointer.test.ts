@@ -33,6 +33,16 @@ const readHole = () =>
     return m ? m[1] : null;
   });
 
+/** The browser checks are about interaction, not rendering, and this machine has no GPU.
+ *  Low quality keeps frames fast so polling for a UI update is not a lottery. */
+async function useLowQuality() {
+  for (const select of await page.$$('select')) {
+    const value = await select.inputValue();
+    if (['low', 'medium', 'high'].includes(value)) await select.selectOption('low');
+  }
+  await page.waitForTimeout(600);
+}
+
 beforeAll(async () => {
   browser = await chromium.launch({
     args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
@@ -40,6 +50,7 @@ beforeAll(async () => {
   page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
   await page.goto(`${BASE}/#/lab?preset=led-basic`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(4000);
+  await useLowQuality();
 });
 
 afterAll(async () => {

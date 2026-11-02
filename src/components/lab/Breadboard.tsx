@@ -11,6 +11,7 @@ import {
 } from '../../lib/circuit/coords';
 import { PITCH_MM } from '../../lib/circuit/board';
 import { makeBoardTexture } from './boardTexture';
+import { surfaceNoise } from './surfaceNoise';
 import type { HoleId } from '../../lib/circuit/board';
 
 /** How thick the invisible click targets are. Thin, so the point you click is the point on
@@ -23,11 +24,19 @@ const TARGET_THICKNESS = 0.4;
 export function Breadboard({
   onHoverHole,
   onClickHole,
+  detail = 'high',
 }: {
   onHoverHole: (id: HoleId | null) => void;
   onClickHole: (id: HoleId) => void;
+  detail?: 'low' | 'medium' | 'high';
 }) {
-  const texture = useMemo(() => makeBoardTexture(), []);
+  const maps = useMemo(() => makeBoardTexture(), []);
+  const noise = useMemo(() => {
+    const t = surfaceNoise().clone();
+    t.repeat.set(5, 8);
+    t.needsUpdate = true;
+    return t;
+  }, []);
   const holes = useMemo(() => allHoles(), []);
 
   // One pick target per hole, sitting exactly on the surface you can see.
@@ -58,13 +67,22 @@ export function Breadboard({
       {/* Body: spans y = 0 to BOARD_SURFACE_Y exactly. */}
       <mesh castShadow receiveShadow position={[0, BOARD_HEIGHT / 2, 0]}>
         <boxGeometry args={[BOARD_WIDTH, BOARD_HEIGHT, BOARD_LENGTH]} />
-        <meshStandardMaterial color="#dcd8cb" roughness={0.75} metalness={0} />
+        {/* Moulded ABS. */}
+        <meshStandardMaterial color="#d8d4c6" roughness={0.58} envMapIntensity={0.5} />
       </mesh>
 
-      {/* Printed top surface, a hair above the body to avoid z-fighting. */}
+      {/* Printed top surface, a hair above the body to avoid z-fighting. The bump map is
+          what turns the painted holes into holes you can see the edges of. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, BOARD_SURFACE_Y + 0.02, 0]} receiveShadow>
         <planeGeometry args={[BOARD_WIDTH, BOARD_LENGTH]} />
-        <meshStandardMaterial map={texture} roughness={0.65} metalness={0} />
+        <meshStandardMaterial
+          map={maps.color}
+          bumpMap={detail === 'high' ? maps.bump : null}
+          bumpScale={1.4}
+          roughness={0.6}
+          roughnessMap={noise}
+          envMapIntensity={0.5}
+        />
       </mesh>
 
       <instancedMesh

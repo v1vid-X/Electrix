@@ -72,6 +72,23 @@ Last updated: 2026-11-02 — Lab pointer and geometry fixes, found by using the 
 - Verified by launching the real Electron app under Xvfb: home, lesson (33 KaTeX nodes, both
   widgets) and the Lab (3D canvas, lazy chunk) all render off disk.
 
+### Making the Lab look real
+- Filmic (ACES) tone mapping, and image-based lighting generated in code from three's own
+  room scene — no asset to download, so it still works offline in the desktop app.
+- Physically-based materials throughout: tinned-steel leads, painted ceramic resistor
+  bodies, moulded ABS board, solder-mask PCB, stamped-steel shield.
+- The LED is now a real LED: a translucent epoxy dome with the reflector cup and the anode
+  post visible inside it, a flange with the flat on the cathode side, and a die that lights.
+- Resistors are lathed with proper rounded shoulders instead of a cylinder with ball ends.
+- The breadboard's holes are a bump map rather than paint, so they have edges.
+- A shared tiling noise texture varies roughness, because uniform gloss is the clearest
+  "this is CG" signal.
+- **Two attempts were wrong and measured as such.** Refraction (`transmission`) on the LED
+  forces the renderer to draw the whole scene again every frame: dropped, since on a 5 mm
+  dome you cannot see the difference. And the first lighting pass used the environment at
+  full strength, which blew the whole scene out to white and destroyed the dark theme — it
+  is now dim and used for reflections only.
+
 ### Lab fixes after the first real install
 Reported from a photo of the running app: "the wires just float and the mouse doesn't even
 line up to the breadboard". Both were real, and both are now covered by browser tests.
@@ -251,6 +268,12 @@ Roughly in the order the addendum asks for.
 - **Smoke is positioned at the part's anchor hole**, not at the centre of the part body, so it
   can look slightly offset on a resistor.
 - **Only tested in Chromium** (headless, via Playwright). Not checked in Firefox or Safari.
+- **Real-GPU performance is unverified.** This container has no GPU, so everything renders
+  through a software rasteriser with no texture hardware — which is precisely where
+  environment maps and bump maps cost the most and on real hardware cost the least.
+  Measured there, the realism work roughly halved the frame rate; measured there, the whole
+  scene runs at 1-3 fps either way, so the numbers say little about a real machine. The
+  mitigation is the automatic quality fallback plus the manual selector, not a guess.
 - **A part can still hide a hole from the current camera angle.** Clicks pass through parts
   now, but if a part is physically on top of a hole you have to orbit to reach it — same as
   real life.

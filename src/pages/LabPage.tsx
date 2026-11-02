@@ -10,6 +10,7 @@ import { emptyCircuit, type Circuit, type Terminal } from '../lib/circuit/types'
 import type { HoleId } from '../lib/circuit/board';
 import { amps, ohms as fmtOhms, volts } from '../lib/format';
 import { presetOrDefault } from '../components/lab/presets';
+import { useAutoQuality } from '../components/lab/useAutoQuality';
 import { CodePanel, type ConsoleLine } from '../components/lab/CodePanel';
 import { findBoard, gpioVolts, withGpio } from '../components/lab/sketchHost';
 import { Sketch, type GpioState, type SketchHost } from '../lib/esp32/runtime';
@@ -49,6 +50,7 @@ export function LabPage() {
   // Why each burnt part died. Kept on screen after the part leaves the simulation.
   const [obituaries, setObituaries] = useState<Diagnostic[]>([]);
   const [quality, setQuality] = useState<Quality>('high');
+  const { downgraded, fps } = useAutoQuality(quality, setQuality);
   const [panelOpen, setPanelOpen] = useState(true);
   const [smoke, setSmoke] = useState<{ partId: string; startedAt: number }[]>([]);
   const nextId = useRef(1);
@@ -493,7 +495,7 @@ export function LabPage() {
           {/* What's happening + diagnostics */}
           <div className="pointer-events-auto hidden max-h-full w-[348px] flex-col gap-3 p-3 pt-0 lg:flex">
             {hasBoard && (
-              <Panel className="flex min-h-[420px] flex-[3] flex-col overflow-hidden">
+              <Panel className="flex min-h-[260px] flex-[3] flex-col overflow-hidden">
                 <CodePanel
                   code={code}
                   onChange={setCode}
@@ -505,7 +507,7 @@ export function LabPage() {
                 />
               </Panel>
             )}
-            <Panel className="max-h-[42%] flex-[2] overflow-y-auto">
+            <Panel className="min-h-[150px] flex-[2] overflow-y-auto">
               <div className="border-b border-line px-3 py-2.5">
                 <span className="font-sans text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-2">
                   What&apos;s happening?
@@ -617,6 +619,14 @@ export function LabPage() {
 
           <Panel className="flex items-center gap-2 px-3 py-2">
             <span className="font-sans text-[12px] text-ink-3">Quality</span>
+            {downgraded && (
+              <span
+                className="font-mono text-[11px] text-cal-warning"
+                title="Reflections and surface detail were turned down because the frame rate was low. Set it back to high if you want them."
+              >
+                auto
+              </span>
+            )}
             <select
               value={quality}
               onChange={(e) => setQuality(e.target.value as Quality)}
@@ -626,6 +636,7 @@ export function LabPage() {
               <option value="medium">medium</option>
               <option value="high">high</option>
             </select>
+            {fps !== null && <span className="font-mono text-[11px] text-ink-3">{fps} fps</span>}
           </Panel>
 
           <Panel className="px-3 py-2 font-mono text-[11.5px] text-ink-3">
